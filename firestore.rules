@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Security Rules do ConSaúde — Auditoria Médica.
+//
+// Estas regras rodam nos servidores do Google. Nada aqui pode ser contornado
+// pelo navegador: mesmo que alguém edite o JavaScript, o Firestore recusa a
+// operação. O papel (admin/user) mora aqui, não no cliente.
+//
+// Publicar:  firebase deploy --only firestore:rules
+// Ou colar em: Console → Firestore Database → Regras.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function meuPerfil() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function perfilExiste() {
+      return autenticado()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Um usuário desativado tem sessão válida no Auth, mas perde todo o acesso.
+    function ativo() {
+      return perfilExiste() && meuPerfil().disabled != true;
+    }
+
+    function admin() {
+      return ativo() && meuPerfil().role == 'admin';
+    }
+
+    function roleValido(dados) {
+      return dados.role == 'admin' || dados.role == 'user';
+    }
+
+    match /users/{uid} {
+      // Cada um enxerga o próprio perfil; admins enxergam todos.
+      allow read: if autenticado() && (request.auth.uid == uid || admin());
+
+      allow create: if admin()
+        && roleValido(request.resource.data)
+        && request.resource.data.disabled == false;
+
+      allow update: if
+        // Admin edita nome, cargo, papel e ativação de qualquer conta.
+        (
+          admin()
+          && roleValido(request.resource.data)
+          && request.resource.data.email == resource.data.email
+        )
+        ||
+        // O próprio usuário só ajusta nome/cargo e baixa o flag de troca de
+        // senha. Não consegue se promover a admin nem se reativar.
+        (
+          request.auth.uid == uid
+          && ativo()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'cargo', 'mustChangePassword'])
+          && request.resource.data.get('mustChangePassword', false) == false
+        );
+
+      // Exclusão definitiva só pelo Console do Firebase — o app desativa.
+      allow delete: if false;
+    }
+
+    // Nenhuma outra coleção é acessível por padrão.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

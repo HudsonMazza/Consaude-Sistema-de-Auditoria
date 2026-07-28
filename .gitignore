@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+*.local
+
+# Dados reais de auditoria — NUNCA versionar (contêm nomes de médicos,
+# procedimentos e valores financeiros reais)
+excel real/
+*.xlsx
+relatorio-ia-*.html
+logo-base64-completo.txt
+
+# Screenshots de desenvolvimento — capturados com dados reais na tela
+*.png
+!public/*.png
+
+# Config pessoal do Claude Code
+.claude/settings.local.json
