@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -786,18 +787,18 @@ async function generateAIReport(resultados) {
 // ConSaúde brand: Orange #F47920 · Navy #1A2B6B
 const themes = {
   dark: {
-    root:    { background: "#080e18", color: "#f1f5f9" },
-    sidebar: { background: "#0b1120" },
-    header:  { background: "rgba(8,14,24,0.88)" },
-    card:    { background: "#0f1828" },
+    root:    { background: "#101722", color: "#f1f5f9" },
+    sidebar: { background: "#111b2a" },
+    header:  { background: "#111b2a" },
+    card:    { background: "#172231" },
     border:  "#1a2b4a",
     text:    "#f1f5f9",
     muted:   "#64748b",
   },
   light: {
-    root:    { background: "#f5f7fa", color: "#0f172a" },
+    root:    { background: "#f4f6f8", color: "#172033" },
     sidebar: { background: "#ffffff" },
-    header:  { background: "rgba(255,255,255,0.93)" },
+    header:  { background: "#ffffff" },
     card:    { background: "#ffffff" },
     border:  "#e8edf2",
     text:    "#0f172a",
@@ -816,6 +817,412 @@ const TIPO_COLORS = {
 };
 const tipoStyle = (tipo) => TIPO_COLORS[tipo] ?? { bg: "#ef444415", color: "#ef4444" };
 
+// ─── DESIGN SYSTEM ────────────────────────────────────────────────────────────
+// Tokens e primitivos compartilhados. Mantêm a identidade ConSaúde (laranja
+// #F47920 / azul-marinho #1A2B6B, tema escuro) e padronizam espaçamento,
+// tipografia, inputs, botões, cards, alertas e modais em todas as telas.
+
+const BRAND = {
+  orange: "#F47920",
+  navy:   "#1A2B6B",
+  navy2:  "#2B4AA0",
+  grad:   "#1A2B6B",
+  gradAI: "#1A2B6B",
+};
+
+const RADIUS = { sm: 6, md: 8, lg: 10, xl: 12 };
+
+// Superfície de input por tema — um único valor para todos os campos do app.
+const inputBg = (dark) => (dark ? "#0a1322" : "#f8fafc");
+
+// Card padrão (fundo + borda + raio) a partir do tema ativo.
+const cardStyle = (t) => ({ ...t.card, borderRadius: RADIUS.xl, border: `1px solid ${t.border}` });
+
+const UI_CSS = `
+.cs-input{width:100%;border-radius:8px;font-size:13.5px;font-family:'DM Sans','Segoe UI',sans-serif;outline:none;transition:border-color .15s ease,box-shadow .15s ease;-webkit-appearance:none}
+.cs-input::placeholder{color:#64748b;opacity:.75}
+.cs-input:focus{border-color:#F47920!important;box-shadow:0 0 0 3px rgba(244,121,32,.16)!important}
+.cs-input:disabled,.cs-input[readonly]{cursor:not-allowed;opacity:.65}
+.cs-select{appearance:auto;-webkit-appearance:auto;cursor:pointer}
+.cs-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;font-weight:600;font-family:'DM Sans','Segoe UI',sans-serif;letter-spacing:0;cursor:pointer;border:1px solid transparent;transition:background .15s ease,border-color .15s ease,opacity .15s ease;white-space:nowrap;line-height:1;user-select:none}
+.cs-btn:disabled{cursor:not-allowed;opacity:.55;box-shadow:none!important;transform:none!important}
+.cs-btn-primary{background:#1A2B6B;color:#fff;border-color:#1A2B6B}
+.cs-btn-primary:not(:disabled):hover{background:#243b82;border-color:#243b82}
+.cs-btn-primary:not(:disabled):active{background:#142252}
+.cs-btn-danger{background:#dc2626;color:#fff;border-color:#dc2626}
+.cs-btn-danger:not(:disabled):hover{background:#b91c1c;border-color:#b91c1c}
+.cs-btn-ghost:not(:disabled):hover{background:rgba(148,163,184,.12)!important;border-color:rgba(148,163,184,.4)!important}
+.cs-icon-btn{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;padding:6px;border-radius:9px;transition:background .15s ease,color .15s ease}
+.cs-icon-btn:hover{background:rgba(148,163,184,.14)}
+.cs-btn:focus-visible,.cs-icon-btn:focus-visible{outline:2px solid #F47920;outline-offset:2px}
+.cs-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px}
+.cs-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.cs-col-full{grid-column:1/-1}
+@media(max-width:860px){.cs-grid-4{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.cs-grid-2{grid-template-columns:1fr}.cs-grid-4{grid-template-columns:1fr}.cs-col-full{grid-column:auto}}
+.cs-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.56);z-index:250;animation:csFade .15s ease}
+.cs-modal-wrap{position:fixed;inset:0;z-index:251;display:grid;place-items:center;padding:24px;overflow:hidden;font-family:'DM Sans','Segoe UI',sans-serif}
+.cs-modal{position:relative;width:100%;max-height:calc(100dvh - 48px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;border-radius:12px;box-shadow:0 18px 48px rgba(15,23,42,.28);animation:csPop .15s ease}
+.cs-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 24px}
+.cs-modal-body{padding:22px 24px;overflow-y:auto;overscroll-behavior:contain;scroll-padding:24px;min-height:0}
+.cs-modal-foot{display:flex;gap:10px;padding:16px 24px}
+@keyframes csFade{from{opacity:0}to{opacity:1}}
+@keyframes csPop{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:640px){.cs-modal-wrap{padding:0}.cs-modal{height:100dvh;max-height:100dvh;border-radius:0}.cs-modal-head,.cs-modal-foot{border-radius:0!important}}
+`;
+
+function UIStyles() { return <style>{UI_CSS}</style>; }
+
+const INTERFACE_CSS = `
+.app-main{flex:1;padding:32px 28px 48px;overflow-y:auto}
+.app-page{width:min(100%,1120px);margin:0 auto}
+.app-page-medium{width:min(100%,960px);margin:0 auto}
+.app-page-narrow{width:min(100%,780px);margin:0 auto}
+.page-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.ui-panel{overflow:hidden}
+.ui-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 20px}
+.ui-panel-title{font-size:14px;font-weight:700;line-height:1.3}
+.ui-panel-copy{font-size:11.5px;line-height:1.5;margin-top:3px}
+.ui-panel-body{padding:20px}
+.ui-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.ui-stat{min-height:104px;padding:16px;display:flex;flex-direction:column;justify-content:space-between}
+.ui-stat-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ui-stat-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ui-stat-value{font-family:inherit;font-size:22px;font-weight:700;line-height:1.1;letter-spacing:0;overflow-wrap:anywhere}
+.ui-stat-label{font-size:12px;font-weight:650;margin-top:10px}
+.ui-stat-detail{font-size:10.5px;line-height:1.4;margin-top:3px}
+.ui-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px}
+.ui-search{position:relative;flex:1;min-width:220px;max-width:420px}
+.ui-toolbar-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ui-filter{border-radius:8px;padding:8px 11px;border:1px solid transparent;background:transparent;font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap;transition:all .15s ease}
+.ui-filter:focus-visible{outline:2px solid #F47920;outline-offset:2px}
+.ui-count-bar{padding:9px 18px;font-size:11.5px}
+.ui-table-wrap{overflow-x:auto}
+.ui-table{width:100%;border-collapse:collapse;min-width:820px}
+.ui-table th{padding:11px 16px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.ui-table td{padding:14px 16px;vertical-align:middle;font-size:12.5px}
+.ui-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;white-space:nowrap}
+.ui-mobile-list{display:none;padding:12px}
+.ui-mobile-card{padding:15px;border-radius:12px;margin-bottom:10px}
+.ui-mobile-card:last-child{margin-bottom:0}
+.ui-mobile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.ui-mobile-meta{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:14px 0}
+.ui-mobile-label{font-size:10.5px;margin-bottom:3px}
+.ui-mobile-value{font-size:12.5px;overflow-wrap:anywhere}
+.ui-mobile-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.upload-files-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.upload-file-card{overflow:hidden;min-width:0}
+.upload-file-head{display:flex;align-items:center;gap:11px;padding:16px 18px}
+.upload-step{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;flex-shrink:0}
+.upload-file-title{font-size:13.5px;font-weight:700}
+.upload-file-subtitle{font-size:10.5px;margin-top:2px}
+.upload-file-body{padding:16px}
+.upload-dropzone{min-height:218px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:26px 18px;border:1.5px dashed;border-radius:11px;cursor:pointer;text-align:center;transition:border-color .15s ease,background .15s ease}
+.upload-ready{min-height:218px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px 16px;text-align:center}
+.upload-file-name{max-width:100%;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upload-tags{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
+.audit-setup{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:16px;margin-bottom:18px}
+.audit-options{display:flex;flex-direction:column;gap:9px}
+.audit-option{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer}
+.audit-action-bar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px}
+.audit-readiness{display:flex;align-items:center;gap:10px;min-width:0}
+.audit-readiness-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.audit-readiness-title{font-size:12.5px;font-weight:700}
+.audit-readiness-copy{font-size:10.5px;margin-top:2px}
+.form-page-grid{display:grid;grid-template-columns:minmax(240px,.7fr) minmax(0,1.3fr);gap:18px;align-items:start}
+.form-stack{display:flex;flex-direction:column;gap:18px}
+.identity-panel{padding:22px;text-align:center}
+.identity-avatar{width:72px;height:72px;border-radius:18px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:800;margin:0 auto 14px}
+.identity-name{font-size:17px;font-weight:750;overflow-wrap:anywhere}
+.identity-email{font-size:11.5px;margin-top:4px;overflow-wrap:anywhere}
+.form-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:0 20px 20px}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.results-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:24px}
+.results-context{font-size:12px;line-height:1.6;margin-top:5px}
+.results-mobile-list{display:none;padding:12px}
+.result-card{padding:15px;border-radius:12px;margin-bottom:10px}
+.result-card:last-child{margin-bottom:0}
+.result-values{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+.result-value{padding:9px;border-radius:8px}
+.result-value-label{font-size:9.5px;margin-bottom:4px}
+.result-value-number{font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.detail-drawer{position:fixed;right:0;top:0;bottom:0;width:min(540px,100%);z-index:221;display:grid;grid-template-rows:auto minmax(0,1fr);box-shadow:-8px 0 28px rgba(15,23,42,.18);animation:slideIn .18s ease}
+.detail-drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:18px 20px}
+.detail-drawer-body{padding:20px;overflow-y:auto;overscroll-behavior:contain}
+.detail-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.detail-metric{padding:12px;border-radius:10px;text-align:center}
+.shell-nav-button{width:100%;display:flex;align-items:center;gap:12px;padding:10px 12px;border:0;border-left:3px solid transparent;background:transparent;font:inherit;text-align:left;cursor:pointer;border-radius:8px;transition:background .15s ease,color .15s ease}
+.shell-nav-button:focus-visible{outline:2px solid #F47920;outline-offset:1px}
+.shell-header-title{display:flex;align-items:center;gap:9px;min-width:0}
+.shell-header-product{font-size:14px;font-weight:750;white-space:nowrap}
+.shell-header-divider{width:1px;height:18px;flex-shrink:0}
+.shell-header-context{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-menu-item{width:100%;border:0;background:transparent;padding:9px 11px;border-radius:8px;font:inherit;font-size:12.5px;text-align:left;cursor:pointer;transition:background .15s ease}
+.profile-menu-item:focus-visible{outline:2px solid #F47920;outline-offset:1px}
+.ai-progress-overlay{position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:20px;background:rgba(15,23,42,.6)}
+.ai-progress-panel{width:min(100%,460px);padding:28px;text-align:center;box-shadow:0 18px 48px rgba(15,23,42,.28)}
+.ai-error-toast{position:fixed;right:20px;bottom:20px;z-index:300;width:min(420px,calc(100vw - 40px));padding:14px 16px;display:flex;gap:12px;align-items:flex-start;box-shadow:0 8px 24px rgba(15,23,42,.18)}
+@media(max-width:1020px){.ui-stat-grid{grid-template-columns:1fr 1fr}.audit-setup,.settings-grid{grid-template-columns:1fr}.form-page-grid{grid-template-columns:280px minmax(0,1fr)}}
+@media(max-width:860px){.ui-table-wrap{display:none}.ui-mobile-list,.results-mobile-list{display:block}.upload-files-grid,.form-page-grid{grid-template-columns:1fr}.identity-panel{text-align:left;display:grid;grid-template-columns:auto 1fr;column-gap:14px}.identity-avatar{grid-row:1/4;margin:0}.results-hero{flex-direction:column}.page-actions{justify-content:flex-start}.audit-setup{grid-template-columns:1fr}}
+@media(max-width:680px){.app-main{padding:22px 14px 36px}.ui-stat-grid,.upload-files-grid,.form-fields{grid-template-columns:1fr}.ui-toolbar{align-items:stretch;flex-direction:column}.ui-search{max-width:none}.ui-toolbar-group{width:100%;overflow-x:auto;flex-wrap:nowrap}.audit-action-bar{align-items:stretch;flex-direction:column}.audit-action-bar .cs-btn{width:100%}.ui-mobile-meta,.settings-grid{grid-template-columns:1fr}.shell-header-context,.shell-header-divider,.shell-theme-label{display:none}.result-values{grid-template-columns:1fr 1fr}.detail-metrics{grid-template-columns:1fr}.detail-drawer{width:100%}.ui-mobile-actions{grid-template-columns:1fr}.form-actions{align-items:stretch;flex-direction:column}.form-actions .cs-btn{width:100%}.ai-progress-panel{padding:22px 18px}.ai-error-toast{right:12px;bottom:12px;width:calc(100vw - 24px)}}
+@media(prefers-reduced-motion:reduce){.fade-in,.metric-card,.card-hover,.detail-drawer{animation:none!important;transition:none!important}}
+`;
+
+function InterfaceStyles() { return <style>{INTERFACE_CSS}</style>; }
+
+// Cabeçalho de página padrão (título + subtítulo + ação à direita).
+function PageHeader({ t, title, subtitle, right }) {
+  return (
+    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap", marginBottom:28 }}>
+      <div>
+        <h1 style={{ fontSize:24, fontWeight:700, color:t.text, letterSpacing:0, marginBottom:5, lineHeight:1.2 }}>{title}</h1>
+        {subtitle && <p style={{ fontSize:13.5, color:t.muted, lineHeight:1.5 }}>{subtitle}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+// Campo de formulário: rótulo + conteúdo + dica opcional.
+function Field({ t, label, hint, htmlFor, children, style }) {
+  return (
+    <div style={style}>
+      {label && <label htmlFor={htmlFor} style={{ fontSize:12, fontWeight:600, color:t.muted, display:"block", marginBottom:7 }}>{label}</label>}
+      {children}
+      {hint && <div style={{ fontSize:11, color:t.muted, marginTop:5, lineHeight:1.5 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function TextInput({ t, dark, style, ...props }) {
+  return (
+    <input
+      className="cs-input"
+      style={{
+        padding: "11px 14px",
+        border: `1px solid ${t.border}`,
+        background: inputBg(dark),
+        color: props.readOnly || props.disabled ? t.muted : t.text,
+        ...style,
+      }}
+      {...props}
+    />
+  );
+}
+
+function SelectInput({ t, dark, style, children, ...props }) {
+  return (
+    <select
+      className="cs-input cs-select"
+      style={{
+        padding: "11px 14px",
+        border: `1px solid ${t.border}`,
+        background: inputBg(dark),
+        color: props.disabled ? t.muted : t.text,
+        ...style,
+      }}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
+function Button({ t, dark, variant = "primary", size = "md", fullWidth, style, children, ...props }) {
+  const pad = size === "sm" ? "8px 14px" : size === "lg" ? "13px 26px" : "10px 20px";
+  const ghost = variant === "ghost" || variant === "subtle";
+  const cls =
+    variant === "primary" ? "cs-btn cs-btn-primary" :
+    variant === "danger"  ? "cs-btn cs-btn-danger"  : "cs-btn cs-btn-ghost";
+  return (
+    <button
+      className={cls}
+      style={{
+        padding: pad,
+        fontSize: size === "lg" ? 14 : 13,
+        ...(fullWidth ? { width: "100%" } : null),
+        ...(ghost ? {
+          background: variant === "subtle" ? (dark ? "rgba(255,255,255,.05)" : "rgba(15,23,42,.03)") : "transparent",
+          border: `1px solid ${t?.border || "#1a2b4a"}`,
+          color: t?.muted || "#64748b",
+        } : null),
+        ...style,
+      }}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Alerta inline (erro/sucesso/aviso) com cores consistentes.
+function Alert({ tone = "error", children, onClose, style }) {
+  const map = {
+    error:   ["#ef4444", "#ef444440", "#ef444415"],
+    success: ["#10b981", "#10b98140", "#10b98115"],
+    warn:    ["#f59e0b", "#f59e0b40", "#f59e0b15"],
+  };
+  const [c, b, bg] = map[tone] || map.error;
+  return (
+    <div role={tone === "error" ? "alert" : "status"} aria-live={tone === "error" ? "assertive" : "polite"} aria-atomic="true"
+      style={{ background:bg, border:`1px solid ${b}`, borderRadius:10, padding:"11px 14px", fontSize:12.5, color:c, lineHeight:1.55, display:"flex", gap:10, alignItems:"flex-start", ...style }}>
+      <div style={{ flex:1 }}>{children}</div>
+      {onClose && <button onClick={onClose} className="cs-icon-btn" style={{ color:c, padding:2, margin:-2 }} aria-label="Fechar">{ICONS.x}</button>}
+    </div>
+  );
+}
+
+// Modal padrão: overlay + rolagem segura (nunca corta o topo) + cabeçalho/rodapé
+// fixos, responsivo (tela cheia no mobile). Fecha no ESC e no clique fora.
+function Modal({ t, dark, title, subtitle, onClose, footer, children, size = "md", danger = false }) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(onClose);
+  const modalId = useId();
+  const titleId = `${modalId}-title`;
+  const descriptionId = `${modalId}-description`;
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        closeRef.current?.();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll(
+        'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'
+      )].filter(element => element.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    const focusFrame = requestAnimationFrame(() => {
+      const initialTarget = dialogRef.current?.querySelector('[data-modal-autofocus="true"]');
+      (initialTarget || dialogRef.current)?.focus();
+    });
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKey);
+      previousFocus?.focus?.();
+    };
+  }, []);
+
+  const maxWidth = size === "sm" ? 420 : size === "lg" ? 760 : 560;
+  return createPortal(
+    <>
+      <div className="cs-modal-overlay" />
+      <div className="cs-modal-wrap" onClick={onClose}>
+        <div
+          ref={dialogRef}
+          className="cs-modal"
+          style={{ ...t.card, border:`1px solid ${danger ? "#ef444455" : t.border}`, maxWidth }}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title ? undefined : "Janela de diálogo"}
+          aria-labelledby={title ? titleId : undefined}
+          aria-describedby={subtitle ? descriptionId : undefined}
+          tabIndex={-1}
+        >
+          {(title || onClose) && (
+            <div className="cs-modal-head" style={{ borderBottom:`1px solid ${t.border}`, ...t.card, borderRadius:"12px 12px 0 0", position:"sticky", top:0, zIndex:2 }}>
+              <div>
+                {title && <div id={titleId} style={{ fontSize:16, fontWeight:700, color:t.text, letterSpacing:"-.01em" }}>{title}</div>}
+                {subtitle && <div id={descriptionId} style={{ fontSize:12.5, color:t.muted, marginTop:3, lineHeight:1.5 }}>{subtitle}</div>}
+              </div>
+              {onClose && <button className="cs-icon-btn" onClick={onClose} style={{ color:t.muted }} aria-label="Fechar">{ICONS.x}</button>}
+            </div>
+          )}
+          <div className="cs-modal-body">{children}</div>
+          {footer && <div className="cs-modal-foot" style={{ borderTop:`1px solid ${t.border}`, ...t.card, borderRadius:"0 0 12px 12px" }}>{footer}</div>}
+        </div>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
+function Drawer({ t, title, subtitle, onClose, children }) {
+  const drawerRef = useRef(null);
+  const closeRef = useRef(onClose);
+  const drawerId = useId();
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        closeRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = [...drawerRef.current.querySelectorAll(
+        'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'
+      )].filter(element => element.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        drawerRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === drawerRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    const focusFrame = requestAnimationFrame(() => drawerRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKey);
+      previousFocus?.focus?.();
+    };
+  }, []);
+
+  return createPortal(
+    <>
+      <div className="drawer-overlay" style={{ zIndex:220 }} onClick={onClose} />
+      <aside ref={drawerRef} className="detail-drawer" style={{ ...t.card, borderLeft:`1px solid ${t.border}` }}
+        role="dialog" aria-modal="true" aria-labelledby={`${drawerId}-title`}
+        aria-describedby={subtitle ? `${drawerId}-description` : undefined} tabIndex={-1}>
+        <div className="detail-drawer-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+          <div>
+            <div id={`${drawerId}-title`} style={{ fontSize:15, fontWeight:700, color:t.text }}>{title}</div>
+            {subtitle && <div id={`${drawerId}-description`} style={{ fontSize:11.5, color:t.muted, marginTop:3, lineHeight:1.45 }}>{subtitle}</div>}
+          </div>
+          <button type="button" className="cs-icon-btn" onClick={onClose} style={{ color:t.muted }} aria-label="Fechar detalhes">{ICONS.x}</button>
+        </div>
+        <div className="detail-drawer-body">{children}</div>
+      </aside>
+    </>,
+    document.body,
+  );
+}
+
 function getNavItems(role) {
   return [
     { id: "upload",        label: "Dashboard",     icon: ICONS.dashboard },
@@ -831,7 +1238,7 @@ export default function App() {
   const [currentUser,   setCurrentUser]   = useState(null);
   const [authReady,     setAuthReady]     = useState(false);
   const [dark,          setDark]          = useState(true);
-  const [sidebarOpen,   setSidebarOpen]   = useState(true);
+  const [sidebarOpen,   setSidebarOpen]   = useState(() => typeof window === 'undefined' || window.innerWidth > 768);
   const [activePage,    setActivePage]    = useState("upload");
   const [file1,         setFile1]         = useState(null);
   const [file2,         setFile2]         = useState(null);
@@ -1099,6 +1506,7 @@ export default function App() {
 
   const t = dark ? themes.dark : themes.light;
   const navItems = getNavItems(currentUser?.role);
+  const activeNavItem = navItems.find(item => item.id === activePage || (activePage === 'results' && item.id === 'audits'));
   const historicoFiltrado = currentUser?.role === 'admin'
     ? historico
     : historico.filter(h => h.userId === currentUser?.id);
@@ -1112,42 +1520,42 @@ export default function App() {
 
   return (
     <div style={{ ...t.root, minHeight: "100vh", display: "flex", fontFamily: "'DM Sans','Segoe UI',sans-serif", transition: "all 0.3s ease" }}>
+      <UIStyles />
+      <InterfaceStyles />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:6px;height:6px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${dark?"#334155":"#cbd5e1"};border-radius:3px}
-        .nav-item{transition:all .2s ease;cursor:pointer;border-radius:10px}
+        .nav-item{transition:background .15s ease,color .15s ease;cursor:pointer;border-radius:6px}
         .nav-item:hover{background:${dark?"rgba(244,121,32,.15)":"rgba(244,121,32,.08)"}}
         .nav-item.active{background:${dark?"rgba(244,121,32,.2)":"rgba(244,121,32,.12)"}}
-        .btn-primary{transition:all .2s ease;cursor:pointer}
-        .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 25px rgba(244,121,32,.45)!important}
-        .btn-primary:active{transform:translateY(0)}
-        .card-hover{transition:all .2s ease}
-        .card-hover:hover{transform:translateY(-2px)}
+        .btn-primary{transition:background .15s ease,border-color .15s ease;cursor:pointer}
+        .btn-primary:hover{filter:brightness(.96)}
+        .card-hover{transition:border-color .15s ease}
+        .card-hover:hover{border-color:${dark?'#334766':'#d2d9e3'}!important}
         .upload-area{transition:all .2s ease;cursor:pointer}
         .upload-area:hover{border-color:#F47920!important;background:${dark?"rgba(244,121,32,.08)":"rgba(244,121,32,.04)"}!important}
         .spin{animation:spin 1s linear infinite}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-        .fade-in{animation:fadeIn .4s ease forwards}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+        .fade-in{animation:fadeIn .25s ease forwards}
         .progress-bar{transition:width .5s ease}
         .step-item{transition:all .3s ease}
         .badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.03em}
         .btn-sm{transition:all .15s ease;cursor:pointer}
         .btn-sm:hover{opacity:.8}
-        .metric-card{transition:all .2s ease}
-        .metric-card:hover{transform:translateY(-3px)}
+        .metric-card{transition:border-color .15s ease}
+        .metric-card:hover{border-color:${dark?'#334766':'#d2d9e3'}!important}
         .table-row{transition:background .15s ease}
         .table-row:hover{background:${dark?"rgba(255,255,255,.03)":"rgba(0,0,0,.02)"}!important}
-        .drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:100;animation:fadeIn .2s ease}
+        .drawer-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);z-index:100;animation:fadeIn .15s ease}
         .drawer{position:fixed;right:0;top:0;bottom:0;width:520px;max-width:95vw;z-index:101;animation:slideIn .3s ease;overflow-y:auto}
         @keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
         .toggle-btn{transition:all .2s ease;cursor:pointer}
         .toggle-btn:hover{opacity:.8}
         .ai-card{position:relative;overflow:hidden}
-        .ai-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(244,121,32,.08) 0%,rgba(43,74,160,.08) 100%);pointer-events:none}
         .checkbox-custom{width:18px;height:18px;border-radius:5px;border:2px solid ${dark?"#475569":"#cbd5e1"};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s ease;cursor:pointer}
         .checkbox-custom.checked{background:#F47920;border-color:#F47920}
         @media(max-width:768px){
@@ -1168,33 +1576,30 @@ export default function App() {
         .ai-loading-dot:nth-child(3){animation-delay:.4s}
       `}</style>
 
-      {/* Overlay de geração de relatório com IA */}
       {aiLoading && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", backdropFilter:"blur(8px)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:"#0e1a30", border:"1px solid #1e2c5e", borderRadius:24, padding:"48px 56px", maxWidth:480, width:"90%", textAlign:"center", boxShadow:"0 30px 80px rgba(0,0,0,.5)" }}>
-            <div style={{ width:72, height:72, borderRadius:22, background:"linear-gradient(135deg,#F47920,#a78bfa)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 28px", boxShadow:"0 10px 30px rgba(244,121,32,.5)" }}>
+        <div className="ai-progress-overlay" role="status" aria-live="polite" aria-label="Gerando relatório com inteligência artificial">
+          <div className="ai-progress-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div style={{ width:52, height:52, borderRadius:10, background:'#1A2B6B', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 18px', color:'#fff' }}>
               {ICONS.brain}
             </div>
-            <h2 style={{ fontSize:22, fontWeight:700, color:"#f1f5f9", letterSpacing:"-.03em", marginBottom:8 }}>Gerando Relatório com IA</h2>
-            <p style={{ fontSize:13, color:"#64748b", marginBottom:32, lineHeight:1.6 }}>
-              O modelo está analisando todas as divergências e redigindo<br/>um relatório executivo completo. Isso leva cerca de 30 segundos.
+            <h2 style={{ fontSize:18, fontWeight:750, color:t.text, marginBottom:6 }}>Gerando relatório com IA</h2>
+            <p style={{ fontSize:12.5, color:t.muted, marginBottom:22, lineHeight:1.55 }}>
+              As divergências estão sendo analisadas para criar o relatório executivo.
             </p>
-            <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:32 }}>
+            <div style={{ display:'flex', justifyContent:'center', gap:7, marginBottom:22 }}>
               <span className="ai-loading-dot" />
               <span className="ai-loading-dot" />
               <span className="ai-loading-dot" />
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10, textAlign:"left" }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, textAlign:'left' }}>
               {[
-                "Analisando divergências por médico...",
-                "Identificando padrões de risco financeiro...",
-                "Calculando impacto por tipo de erro...",
-                "Redigindo plano de ação prioritário...",
-                "Formatando relatório HTML estilizado...",
-              ].map((txt, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:10, color:"#94a3b8", fontSize:12.5 }}>
-                  <div style={{ width:6, height:6, borderRadius:"50%", background:"#F47920", flexShrink:0 }} />
-                  {txt}
+                'Consolidando divergências por médico',
+                'Identificando riscos financeiros',
+                'Preparando o plano de ação',
+              ].map((text) => (
+                <div key={text} style={{ display:'flex', alignItems:'center', gap:9, color:t.muted, fontSize:11.5 }}>
+                  <div style={{ width:5, height:5, borderRadius:'50%', background:'#F47920', flexShrink:0 }} />
+                  {text}
                 </div>
               ))}
             </div>
@@ -1202,15 +1607,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Erro de geração IA */}
       {aiError && (
-        <div style={{ position:"fixed", bottom:24, right:24, zIndex:250, background:"#1e1e2e", border:"1px solid #ef444440", borderRadius:14, padding:"16px 20px", maxWidth:420, boxShadow:"0 8px 30px rgba(0,0,0,.4)", display:"flex", gap:14, alignItems:"flex-start" }}>
-          <span style={{ color:"#ef4444", flexShrink:0, marginTop:2 }}>{ICONS.warning}</span>
+        <div className="ai-error-toast" role="alert" style={{ ...t.card, border:'1px solid #ef444450', borderRadius:RADIUS.lg }}>
+          <span style={{ color:'#ef4444', flexShrink:0, marginTop:2 }}>{ICONS.warning}</span>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:13, fontWeight:600, color:"#f1f5f9", marginBottom:4 }}>Erro ao gerar relatório IA</div>
-            <div style={{ fontSize:12, color:"#94a3b8", lineHeight:1.5 }}>{aiError}</div>
+            <div style={{ fontSize:13, fontWeight:650, color:t.text, marginBottom:3 }}>Não foi possível gerar o relatório</div>
+            <div style={{ fontSize:11.5, color:t.muted, lineHeight:1.5 }}>{aiError}</div>
           </div>
-          <button onClick={() => setAiError(null)} style={{ background:"none", border:"none", color:"#64748b", cursor:"pointer", padding:2 }}>{ICONS.x}</button>
+          <button type="button" className="cs-icon-btn" onClick={() => setAiError(null)} aria-label="Fechar erro" style={{ color:t.muted }}>{ICONS.x}</button>
         </div>
       )}
 
@@ -1223,8 +1627,9 @@ export default function App() {
         borderRight:`1px solid ${t.border}`,
       }}>
         <div style={{ padding:"20px 16px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:12, minHeight:72 }}>
-          <div style={{ width:38, height:38, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, overflow:"hidden" }}>
-            <img src="/public/logo.png" alt="ConSaúde" style={{ width:"100%", height:"100%", objectFit:"contain" }} />
+          <div style={{ width:38, height:38, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, overflow:"hidden", background:BRAND.grad }}>
+            <img src="/logo.png" alt="ConSaúde" style={{ width:"100%", height:"100%", objectFit:"contain" }}
+              onError={e => { e.target.style.display='none'; e.target.parentNode.innerHTML='<span style="color:white;font-size:16px;font-weight:900">C</span>'; }} />
           </div>
           {sidebarOpen && (
             <div style={{ overflow:"hidden" }}>
@@ -1240,28 +1645,28 @@ export default function App() {
           {navItems.map((item) => {
             const isActive = activePage===item.id || (activePage==="results"&&item.id==="audits");
             return (
-              <div key={item.id}
-                className={`nav-item ${isActive?"active":""}`}
+              <button key={item.id} type="button"
+                className={`shell-nav-button nav-item ${isActive?"active":""}`}
                 onClick={() => { setActivePage(item.id); if(window.innerWidth<=768) setSidebarOpen(false); }}
-                style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px",
-                  color:isActive?"#F47920":t.muted,
-                  borderLeft:isActive?"3px solid #F47920":"3px solid transparent",
-                  marginLeft:2, paddingLeft:9 }}>
+                aria-current={isActive?'page':undefined}
+                aria-label={sidebarOpen?undefined:item.label}
+                title={sidebarOpen?undefined:item.label}
+                style={{ color:isActive?'#F47920':t.muted, borderLeftColor:isActive?'#F47920':'transparent' }}>
                 <span style={{ flexShrink:0 }}>{item.icon}</span>
                 {sidebarOpen && <span style={{ fontSize:13.5, fontWeight:500, whiteSpace:"nowrap" }}>{item.label}</span>}
-              </div>
+              </button>
             );
           })}
         </nav>
 
         <div style={{ padding:"16px 10px", borderTop:`1px solid ${t.border}` }}>
-          <div className="nav-item" onClick={() => setSidebarOpen((p)=>!p)}
-            style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", color:t.muted }}>
+          <button type="button" className="shell-nav-button nav-item" onClick={() => setSidebarOpen((p)=>!p)}
+            aria-label={sidebarOpen?'Recolher navegação':'Expandir navegação'} style={{ color:t.muted }}>
             <span style={{ transform:sidebarOpen?"rotate(180deg)":"rotate(0)", transition:"transform .3s", flexShrink:0 }}>
               {ICONS.chevronRight}
             </span>
             {sidebarOpen && <span style={{ fontSize:13, whiteSpace:"nowrap" }}>Recolher</span>}
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -1269,30 +1674,33 @@ export default function App() {
 
       {/* Main */}
       <div className="main-content" style={{ marginLeft:sidebarOpen?240:72, flex:1, transition:"margin-left .3s ease", display:"flex", flexDirection:"column", minHeight:"100vh" }}>
-        <header style={{ ...t.header, borderBottom:`1px solid ${t.border}`, padding:"0 24px", height:64, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40, backdropFilter:"blur(12px)" }}>
+        <header style={{ ...t.header, borderBottom:`1px solid ${t.border}`, padding:"0 20px", height:64, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:40 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button onClick={() => setSidebarOpen((p)=>!p)} style={{ background:"none", border:"none", color:t.muted, cursor:"pointer", display:"flex", alignItems:"center", padding:4, borderRadius:8 }}>
+            <button type="button" className="cs-icon-btn" onClick={() => setSidebarOpen((p)=>!p)} aria-label={sidebarOpen?'Fechar navegação':'Abrir navegação'} style={{ color:t.muted }}>
               {ICONS.menu}
             </button>
-            <span style={{ fontSize:15, fontWeight:700, letterSpacing:"-.02em" }}>
-              <span style={{ color:"#F47920" }}>Con</span><span style={{ color:dark?"#f1f5f9":"#1A2B6B" }}>Saúde</span>
-              <span style={{ color:t.muted, fontWeight:500, fontSize:13 }}> · Auditoria de Produção Médica</span>
-            </span>
+            <div className="shell-header-title">
+              <span className="shell-header-product"><span style={{ color:'#F47920' }}>Con</span><span style={{ color:dark?'#f1f5f9':'#1A2B6B' }}>Saúde</span></span>
+              <span className="shell-header-divider" style={{ background:t.border }} />
+              <span className="shell-header-context" style={{ color:t.muted }}>{processing?'Processando auditoria':activeNavItem?.label||'Configurações'}</span>
+            </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button className="toggle-btn" onClick={() => setDark((p)=>!p)} style={{ background:dark?"#1e293b":"#f1f5f9", border:`1px solid ${t.border}`, borderRadius:8, padding:"6px 10px", color:t.text, display:"flex", alignItems:"center", gap:6, fontSize:12, fontWeight:500 }}>
+            <button type="button" className="toggle-btn" onClick={() => setDark((p)=>!p)} aria-label={dark?'Ativar tema claro':'Ativar tema escuro'}
+              style={{ background:dark?'#1e293b':'#f1f5f9', border:`1px solid ${t.border}`, borderRadius:8, padding:'7px 9px', color:t.text, display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:500 }}>
               {dark?ICONS.sun:ICONS.moon}
-              <span>{dark?"Claro":"Escuro"}</span>
+              <span className="shell-theme-label">{dark?'Claro':'Escuro'}</span>
             </button>
             <div ref={profileRef} style={{ position:"relative" }}>
-              <button onClick={() => setProfileOpen((p)=>!p)} style={{ background:"linear-gradient(135deg,#F47920,#1A2B6B)", border:"none", borderRadius:"50%", width:36, height:36, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontWeight:700, fontSize:14, boxShadow:"0 2px 8px rgba(244,121,32,.4)" }}>
-                {currentUser.name.charAt(0).toUpperCase()}
+              <button type="button" onClick={() => setProfileOpen((p)=>!p)} aria-label="Abrir menu da conta" aria-haspopup="menu" aria-expanded={profileOpen}
+                style={{ background:'#1A2B6B', border:`1px solid ${dark?'#40558c':'#d7deec'}`, borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:14 }}>
+                {(currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
               </button>
               {profileOpen && (
-                <div style={{ position:"absolute", right:0, top:44, ...t.card, borderRadius:12, border:`1px solid ${t.border}`, padding:8, minWidth:200, boxShadow:"0 8px 30px rgba(0,0,0,.2)", zIndex:50 }}>
+                <div role="menu" style={{ position:'absolute', right:0, top:44, ...t.card, borderRadius:8, border:`1px solid ${t.border}`, padding:8, minWidth:220, boxShadow:'0 8px 24px rgba(15,23,42,.16)', zIndex:50 }}>
                   <div style={{ padding:"8px 12px", borderBottom:`1px solid ${t.border}`, marginBottom:4 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:t.text }}>{currentUser.name}</div>
-                    <div style={{ fontSize:11, color:t.muted }}>{currentUser.email}</div>
+                    <div style={{ fontSize:11, color:t.muted, overflowWrap:'anywhere', marginTop:2 }}>{currentUser.email}</div>
                     <span style={{ display:"inline-flex", marginTop:4, padding:"2px 8px", borderRadius:20, fontSize:10, fontWeight:700, background:currentUser.role==="admin"?"#F4792018":"#2B4AA018", color:currentUser.role==="admin"?"#F47920":"#2B4AA0" }}>
                       {currentUser.role==="admin"?"Administrador":"Usuário"}
                     </span>
@@ -1302,7 +1710,7 @@ export default function App() {
                     { label:"Configurações", action:() => { setActivePage("settings-page"); setProfileOpen(false); } },
                     { label:"Sair", action:handleLogout, danger:true },
                   ].map(({ label, action, danger }) => (
-                    <div key={label} className="nav-item" onClick={action} style={{ padding:"8px 12px", fontSize:13, color:danger?"#ef4444":t.text, cursor:"pointer" }}>{label}</div>
+                    <button key={label} type="button" role="menuitem" className="profile-menu-item nav-item" onClick={action} style={{ color:danger?'#ef4444':t.text }}>{label}</button>
                   ))}
                 </div>
               )}
@@ -1310,7 +1718,7 @@ export default function App() {
           </div>
         </header>
 
-        <main style={{ flex:1, padding:"32px 24px", overflowY:"auto" }}>
+        <main className="app-main">
           {processing ? (
             <ProcessingScreen dark={dark} t={t} steps={steps} progress={progress} />
           ) : activePage==="upload" ? (
@@ -1373,6 +1781,7 @@ function LoginScreen({ onLogin }) {
   const [showPwd,   setShowPwd]   = useState(false);
   const [showForgot,setShowForgot]= useState(false);
   const [forgotEmail,setForgotEmail]= useState('');
+  const t = themes.dark;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1398,40 +1807,40 @@ function LoginScreen({ onLogin }) {
   );
 
   return (
-    <div style={{ minHeight:'100vh', background:'#080e18', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}.login-input:focus{border-color:#F47920!important;outline:none}.login-btn:hover{transform:translateY(-1px);box-shadow:0 8px 25px rgba(244,121,32,.5)!important}.login-btn:active{transform:translateY(0)}`}</style>
-      <div style={{ position:'fixed', inset:0, background:'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(244,121,32,.18) 0%, transparent 60%)', pointerEvents:'none' }} />
+    <div style={{ minHeight:'100vh', background:'#111b2a', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}.login-input:focus{border-color:#F47920!important;outline:none}`}</style>
+      <UIStyles />
 
       <div style={{ width:'100%', maxWidth:420, position:'relative' }}>
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:36 }}>
-          <div style={{ width:72, height:72, borderRadius:20, background:'linear-gradient(135deg,#F47920,#1A2B6B)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', boxShadow:'0 12px 32px rgba(244,121,32,.45)', overflow:'hidden' }}>
+          <div style={{ width:64, height:64, borderRadius:10, background:'#ffffff', border:'1px solid #dfe4ea', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', overflow:'hidden' }}>
             <img src="/logo.png" alt="ConSaúde" style={{ width:'100%', height:'100%', objectFit:'contain' }}
-              onError={e => { e.target.style.display='none'; e.target.parentNode.innerHTML='<span style="color:white;font-size:28px;font-weight:900">C</span>'; }} />
+              onError={e => { e.target.style.display='none'; e.target.parentNode.innerHTML='<span style="color:#1A2B6B;font-size:28px;font-weight:800">C</span>'; }} />
           </div>
-          <div style={{ fontSize:30, fontWeight:800, letterSpacing:'-.03em', marginBottom:4 }}>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:0, marginBottom:4 }}>
             <span style={{ color:'#F47920' }}>Con</span><span style={{ color:'#f1f5f9' }}>Saúde</span>
           </div>
           <div style={{ fontSize:13, color:'#64748b' }}>Sistema de Auditoria Médica</div>
         </div>
 
         {/* Card */}
-        <div style={{ background:'#0f1828', border:'1px solid #1a2b4a', borderRadius:20, padding:'36px 32px', boxShadow:'0 24px 64px rgba(0,0,0,.55)' }}>
-          <h2 style={{ fontSize:20, fontWeight:700, color:'#f1f5f9', marginBottom:6, letterSpacing:'-.02em' }}>Bem-vindo de volta</h2>
+        <div style={{ background:'#172231', border:'1px solid #2a3a50', borderRadius:12, padding:'32px', boxShadow:'0 12px 32px rgba(0,0,0,.22)' }}>
+          <h2 style={{ fontSize:20, fontWeight:700, color:'#f1f5f9', marginBottom:6, letterSpacing:0 }}>Bem-vindo de volta</h2>
           <p style={{ fontSize:13, color:'#64748b', marginBottom:28 }}>Entre com sua conta para acessar o sistema.</p>
 
           <form onSubmit={submit}>
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:12, fontWeight:600, color:'#94a3b8', display:'block', marginBottom:6 }}>E-mail</label>
-              <input className="login-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="seu@email.com.br"
-                style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #1a2b4a', background:'#080e18', color:'#f1f5f9', fontSize:13, transition:'border .2s', fontFamily:"'DM Sans',sans-serif" }} />
+              <TextInput t={t} dark type="email" value={email} required placeholder="seu@email.com.br"
+                onChange={e => setEmail(e.target.value)} />
             </div>
 
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:12, fontWeight:600, color:'#94a3b8', display:'block', marginBottom:6 }}>Senha</label>
               <div style={{ position:'relative' }}>
-                <input className="login-input" type={showPwd?'text':'password'} value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••"
-                  style={{ width:'100%', padding:'11px 42px 11px 14px', borderRadius:10, border:'1px solid #1a2b4a', background:'#080e18', color:'#f1f5f9', fontSize:13, transition:'border .2s', fontFamily:"'DM Sans',sans-serif" }} />
+                <TextInput t={t} dark type={showPwd?'text':'password'} value={password} required placeholder="••••••••"
+                  onChange={e => setPassword(e.target.value)} style={{ paddingRight:42 }} />
                 <button type="button" onClick={() => setShowPwd(p=>!p)} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'#64748b', cursor:'pointer', display:'flex', alignItems:'center', padding:0 }}>
                   {showPwd ? ICONS.eye : eyeOffIcon}
                 </button>
@@ -1439,9 +1848,7 @@ function LoginScreen({ onLogin }) {
             </div>
 
             {error && (
-              <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444', marginBottom:16, display:'flex', alignItems:'center', gap:6 }}>
-                {ICONS.warning} {error}
-              </div>
+              <Alert tone="error" style={{ marginBottom:16 }}>{error}</Alert>
             )}
 
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
@@ -1456,14 +1863,13 @@ function LoginScreen({ onLogin }) {
               </button>
             </div>
 
-            <button type="submit" className="login-btn" disabled={loading}
-              style={{ width:'100%', padding:'13px', background:loading?'#1e293b':'linear-gradient(135deg,#F47920,#1A2B6B)', color:loading?'#64748b':'white', border:'none', borderRadius:11, fontSize:14, fontWeight:700, cursor:loading?'not-allowed':'pointer', boxShadow:loading?'none':'0 4px 20px rgba(244,121,32,.4)', transition:'all .2s', fontFamily:"'DM Sans',sans-serif" }}>
-              {loading ? 'Entrando...' : 'Entrar →'}
-            </button>
+            <Button t={t} dark type="submit" size="lg" fullWidth disabled={loading}>
+              {loading ? 'Entrando...' : 'Entrar'}
+            </Button>
           </form>
         </div>
 
-        <p style={{ textAlign:'center', fontSize:12, color:'#1e293b', marginTop:24 }}>
+        <p style={{ textAlign:'center', fontSize:12, color:'#64748b', marginTop:24 }}>
           ConSaúde · Sistema Interno de Auditoria Médica
         </p>
       </div>
@@ -1477,6 +1883,7 @@ function ForgotPasswordScreen({ email: initialEmail, onBack }) {
   const [submitted, setSubmitted] = useState(false);
   const [sending,   setSending]   = useState(false);
   const [error,     setError]     = useState('');
+  const t = themes.dark;
 
   const enviar = async () => {
     if (!email.trim()) { setError('Informe seu e-mail.'); return; }
@@ -1498,15 +1905,15 @@ function ForgotPasswordScreen({ email: initialEmail, onBack }) {
   };
 
   return (
-    <div style={{ minHeight:'100vh', background:'#080e18', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
-      <div style={{ position:'fixed', inset:0, background:'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(244,121,32,.18) 0%, transparent 60%)', pointerEvents:'none' }} />
+    <div style={{ minHeight:'100vh', background:'#111b2a', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
+      <UIStyles />
       <div style={{ width:'100%', maxWidth:420, position:'relative' }}>
         <div style={{ textAlign:'center', marginBottom:36 }}>
-          <div style={{ fontSize:30, fontWeight:800, letterSpacing:'-.03em', marginBottom:4 }}>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:0, marginBottom:4 }}>
             <span style={{ color:'#F47920' }}>Con</span><span style={{ color:'#f1f5f9' }}>Saúde</span>
           </div>
         </div>
-        <div style={{ background:'#0f1828', border:'1px solid #1a2b4a', borderRadius:20, padding:'36px 32px', boxShadow:'0 24px 64px rgba(0,0,0,.55)' }}>
+        <div style={{ background:'#172231', border:'1px solid #2a3a50', borderRadius:12, padding:'32px', boxShadow:'0 12px 32px rgba(0,0,0,.22)' }}>
           {submitted ? (
             <div style={{ textAlign:'center' }}>
               <div style={{ width:56, height:56, borderRadius:16, background:'#10b98120', border:'1px solid #10b98130', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', color:'#10b981', fontSize:22 }}>✓</div>
@@ -1515,9 +1922,7 @@ function ForgotPasswordScreen({ email: initialEmail, onBack }) {
                 Se houver uma conta para <strong style={{ color:'#f1f5f9' }}>{email}</strong>, você receberá um link para criar uma nova senha.<br/><br/>
                 O link expira em 1 hora. Confira também a caixa de spam.
               </p>
-              <button onClick={onBack} style={{ background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:10, padding:'11px 28px', fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                Voltar ao login
-              </button>
+              <Button t={t} dark onClick={onBack}>Voltar ao login</Button>
             </div>
           ) : (
             <>
@@ -1530,17 +1935,14 @@ function ForgotPasswordScreen({ email: initialEmail, onBack }) {
               </p>
               <div style={{ marginBottom:16 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:'#94a3b8', display:'block', marginBottom:6 }}>E-mail da conta</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com.br"
+                <TextInput t={t} dark type="email" value={email} placeholder="seu@email.com.br"
                   onKeyDown={e => { if (e.key === 'Enter') enviar(); }}
-                  style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #1a2b4a', background:'#080e18', color:'#f1f5f9', fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
+                  onChange={e => setEmail(e.target.value)} />
               </div>
-              {error && (
-                <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444', marginBottom:16 }}>{error}</div>
-              )}
-              <button onClick={enviar} disabled={sending}
-                style={{ width:'100%', padding:'12px', background:sending?'#1e293b':'linear-gradient(135deg,#F47920,#1A2B6B)', color:sending?'#64748b':'white', border:'none', borderRadius:10, fontSize:13, fontWeight:600, cursor:sending?'not-allowed':'pointer', fontFamily:"'DM Sans',sans-serif" }}>
+              {error && <Alert tone="error" style={{ marginBottom:16 }}>{error}</Alert>}
+              <Button t={t} dark fullWidth onClick={enviar} disabled={sending}>
                 {sending ? 'Enviando…' : 'Enviar link de redefinição'}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -1557,6 +1959,7 @@ function ForcePasswordChangeScreen({ user, onDone, onLogout }) {
   const [form,    setForm]    = useState({ atual:'', nova:'', confirma:'' });
   const [erro,    setErro]    = useState('');
   const [salvando,setSalvando]= useState(false);
+  const t = themes.dark;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1581,17 +1984,17 @@ function ForcePasswordChangeScreen({ user, onDone, onLogout }) {
   ];
 
   return (
-    <div style={{ minHeight:'100vh', background:'#080e18', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
+    <div style={{ minHeight:'100vh', background:'#111b2a', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}.login-input:focus{border-color:#F47920!important;outline:none}`}</style>
-      <div style={{ position:'fixed', inset:0, background:'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(244,121,32,.18) 0%, transparent 60%)', pointerEvents:'none' }} />
+      <UIStyles />
       <div style={{ width:'100%', maxWidth:420, position:'relative' }}>
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{ fontSize:30, fontWeight:800, letterSpacing:'-.03em', marginBottom:4 }}>
+          <div style={{ fontSize:28, fontWeight:700, letterSpacing:0, marginBottom:4 }}>
             <span style={{ color:'#F47920' }}>Con</span><span style={{ color:'#f1f5f9' }}>Saúde</span>
           </div>
         </div>
-        <div style={{ background:'#0f1828', border:'1px solid #1a2b4a', borderRadius:20, padding:'36px 32px', boxShadow:'0 24px 64px rgba(0,0,0,.55)' }}>
-          <h2 style={{ fontSize:20, fontWeight:700, color:'#f1f5f9', marginBottom:6, letterSpacing:'-.02em' }}>Defina sua senha</h2>
+        <div style={{ background:'#172231', border:'1px solid #2a3a50', borderRadius:12, padding:'32px', boxShadow:'0 12px 32px rgba(0,0,0,.22)' }}>
+          <h2 style={{ fontSize:20, fontWeight:700, color:'#f1f5f9', marginBottom:6, letterSpacing:0 }}>Defina sua senha</h2>
           <p style={{ fontSize:13, color:'#64748b', marginBottom:24, lineHeight:1.55 }}>
             Olá, {user.name?.split(' ')[0]}. Sua conta usa uma senha temporária. Escolha uma senha pessoal para continuar.
           </p>
@@ -1599,20 +2002,14 @@ function ForcePasswordChangeScreen({ user, onDone, onLogout }) {
             {campos.map(({ key, label, ph }) => (
               <div key={key} style={{ marginBottom:16 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:'#94a3b8', display:'block', marginBottom:6 }}>{label}</label>
-                <input className="login-input" type="password" value={form[key]} required placeholder={ph}
-                  onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                  style={{ width:'100%', padding:'11px 14px', borderRadius:10, border:'1px solid #1a2b4a', background:'#080e18', color:'#f1f5f9', fontSize:13, fontFamily:"'DM Sans',sans-serif" }} />
+                <TextInput t={t} dark type="password" value={form[key]} required placeholder={ph}
+                  onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} />
               </div>
             ))}
-            {erro && (
-              <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444', marginBottom:16, display:'flex', alignItems:'center', gap:6 }}>
-                {ICONS.warning} {erro}
-              </div>
-            )}
-            <button type="submit" disabled={salvando}
-              style={{ width:'100%', padding:'13px', background:salvando?'#1e293b':'linear-gradient(135deg,#F47920,#1A2B6B)', color:salvando?'#64748b':'white', border:'none', borderRadius:11, fontSize:14, fontWeight:700, cursor:salvando?'not-allowed':'pointer', fontFamily:"'DM Sans',sans-serif" }}>
-              {salvando ? 'Salvando…' : 'Salvar e entrar →'}
-            </button>
+            {erro && <Alert tone="error" style={{ marginBottom:16 }}>{erro}</Alert>}
+            <Button t={t} dark type="submit" size="lg" fullWidth disabled={salvando}>
+              {salvando ? 'Salvando…' : 'Salvar e entrar'}
+            </Button>
           </form>
           <button onClick={onLogout} style={{ width:'100%', background:'none', border:'none', color:'#64748b', fontSize:12.5, cursor:'pointer', marginTop:16, fontFamily:"'DM Sans',sans-serif" }}>
             Sair
@@ -1626,9 +2023,9 @@ function ForcePasswordChangeScreen({ user, onDone, onLogout }) {
 // ─── FIREBASE NÃO CONFIGURADO ─────────────────────────────────────────────────
 function FirebaseSetupScreen() {
   return (
-    <div style={{ minHeight:'100vh', background:'#080e18', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
-      <div style={{ maxWidth:460, background:'#0f1828', border:'1px solid #1a2b4a', borderRadius:20, padding:'36px 32px' }}>
-        <div style={{ fontSize:26, fontWeight:800, letterSpacing:'-.03em', marginBottom:16 }}>
+    <div style={{ minHeight:'100vh', background:'#111b2a', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 }}>
+      <div style={{ maxWidth:460, background:'#172231', border:'1px solid #2a3a50', borderRadius:12, padding:'32px' }}>
+        <div style={{ fontSize:26, fontWeight:700, letterSpacing:0, marginBottom:16 }}>
           <span style={{ color:'#F47920' }}>Con</span><span style={{ color:'#f1f5f9' }}>Saúde</span>
         </div>
         <h2 style={{ fontSize:17, fontWeight:700, color:'#f1f5f9', marginBottom:10 }}>Firebase não configurado</h2>
@@ -1645,53 +2042,53 @@ function FirebaseSetupScreen() {
 // ─── UPLOAD SCREEN ────────────────────────────────────────────────────────────
 function UploadScreen({ dark, t, file1, file2, setFile1, setFile2, drag1, drag2, setDrag1, setDrag2, handleFileDrop, handleFileSelect, advancedOpen, setAdvancedOpen, configs, setConfigs, startAudit, uploadError, cols1, cols2, periodoAuditoria, setPeriodoAuditoria }) {
   const canStart = file1 && file2;
+  const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
-    { label:"Relatório de Produção", file:file1, setFile:setFile1, drag:drag1, setDrag:setDrag1, accent:"#F47920", num:1, cols:cols1, err: uploadError?.prod },
-    { label:"Relatório de Repasse",  file:file2, setFile:setFile2, drag:drag2, setDrag:setDrag2, accent:"#2B4AA0", num:2, cols:cols2, err: uploadError?.rep },
+    { label:"Relatório de Produção", subtitle:"Base dos atendimentos realizados", file:file1, setFile:setFile1, drag:drag1, setDrag:setDrag1, accent:"#F47920", num:1, cols:cols1, err:uploadError?.prod },
+    { label:"Relatório de Repasse", subtitle:"Base dos valores repassados", file:file2, setFile:setFile2, drag:drag2, setDrag:setDrag2, accent:"#2563eb", num:2, cols:cols2, err:uploadError?.rep },
   ];
 
   return (
-    <div className="fade-in" style={{ maxWidth:900, margin:"0 auto" }}>
-      <div style={{ marginBottom:32 }}>
-        <h1 style={{ fontSize:28, fontWeight:700, color:t.text, letterSpacing:"-.03em", marginBottom:8 }}>Auditoria de Produção Médica</h1>
-        <p style={{ fontSize:15, color:t.muted, lineHeight:1.6 }}>Compare automaticamente os relatórios de Produção e Repasse e identifique divergências em segundos.</p>
-      </div>
+    <div className="app-page-medium fade-in">
+      <PageHeader t={t} title="Nova auditoria"
+        subtitle="Prepare os relatórios de produção e repasse para iniciar a comparação."
+        right={
+          <span className="badge" style={{ background:canStart?'#05966916':'#d9770616', color:canStart?'#059669':'#d97706', padding:'7px 11px' }}>
+            {canStart ? 'Arquivos prontos' : `${selectedCount} de 2 arquivos`}
+          </span>
+        } />
 
       {uploadError?.geral && (
-        <div className="error-box" style={{ marginBottom:20, display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ color:"#ef4444" }}>{ICONS.warning}</span>
-          <span style={{ fontSize:13, color:"#ef4444" }}>{uploadError.geral}</span>
-        </div>
+        <Alert tone="error" style={{ marginBottom:18 }}>{uploadError.geral}</Alert>
       )}
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:24 }}>
-        {cards.map(({ label, file, setFile, drag, setDrag, accent, num, cols, err }) => (
-          <div key={num} className="card-hover" style={{ ...t.card, borderRadius:16, border:`1px solid ${err ? "#ef4444" : t.border}`, overflow:"hidden" }}>
-            <div style={{ padding:"20px 20px 14px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background:accent }} />
-              <span style={{ fontSize:14, fontWeight:600, color:t.text }}>{label}</span>
+      <div className="upload-files-grid">
+        {cards.map(({ label, subtitle, file, setFile, drag, setDrag, accent, num, cols, err }) => (
+          <section key={num} className="upload-file-card" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${err ? '#ef444470' : t.border}` }}>
+            <div className="upload-file-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div className="upload-step" style={{ background:file?'#059669':accent }}>{file ? ICONS.check : num}</div>
+              <div>
+                <div className="upload-file-title" style={{ color:t.text }}>{label}</div>
+                <div className="upload-file-subtitle" style={{ color:t.muted }}>{subtitle}</div>
+              </div>
             </div>
-            <div style={{ padding:20 }}>
+            <div className="upload-file-body">
               {err && (
-                <div className="error-box" style={{ marginBottom:12 }}>
-                  {err.map((e, i) => (
-                    <div key={i} style={{ fontSize:12, color:"#ef4444", display:"flex", alignItems:"flex-start", gap:6, marginBottom:i<err.length-1?4:0 }}>
-                      <span style={{ marginTop:1 }}>{ICONS.warning}</span><span>{e}</span>
-                    </div>
-                  ))}
-                </div>
+                <Alert tone="error" style={{ marginBottom:12 }}>
+                  {err.map((message, index) => <div key={index} style={{ marginBottom:index<err.length-1?4:0 }}>{message}</div>)}
+                </Alert>
               )}
               {file ? (
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"20px 16px" }}>
-                  <div style={{ width:52, height:52, borderRadius:14, background:`${accent}22`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    <div style={{ color:accent }}>{ICONS.check}</div>
+                <div className="upload-ready">
+                  <div style={{ width:50, height:50, borderRadius:13, background:'#05966916', display:'flex', alignItems:'center', justifyContent:'center', color:'#059669' }}>
+                    {ICONS.spreadsheet}
                   </div>
-                  <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:t.text, marginBottom:3 }}>{file.name}</div>
-                    <div style={{ fontSize:11, color:t.muted }}>{(file.size/1024).toFixed(1)} KB · Pronto para análise</div>
+                  <div style={{ width:'100%' }}>
+                    <div className="upload-file-name" title={file.name} style={{ color:t.text }}>{file.name}</div>
+                    <div style={{ fontSize:10.5, color:t.muted, marginTop:4 }}>{(file.size/1024).toFixed(1)} KB · Arquivo validado</div>
                   </div>
                   {cols && (
-                    <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:2, marginTop:2 }}>
+                    <div className="upload-tags">
                       {cols.medicoCol   && <span className="col-tag">{ICONS.tag}&nbsp;Médico: {cols.medicoCol}</span>}
                       {cols.pacienteCol && <span className="col-tag">{ICONS.tag}&nbsp;Paciente: {cols.pacienteCol}</span>}
                       {cols.valorCol    && <span className="col-tag">{ICONS.tag}&nbsp;Valor: {cols.valorCol}</span>}
@@ -1699,83 +2096,100 @@ function UploadScreen({ dark, t, file1, file2, setFile1, setFile2, drag1, drag2,
                       {!cols.valorCol   && <span className="col-tag" style={{ background:"#ef444415", color:"#ef4444" }}>Valor não detectado</span>}
                     </div>
                   )}
-                  <button className="btn-sm" onClick={() => setFile(null)} style={{ background:"none", border:`1px solid ${t.border}`, borderRadius:8, padding:"6px 14px", fontSize:12, color:t.muted, cursor:"pointer", marginTop:4 }}>Trocar arquivo</button>
+                  <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => setFile(null)}>Trocar arquivo</Button>
                 </div>
               ) : (
                 <label
-                  className="upload-area"
+                  className="upload-dropzone"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Selecionar ${label}`}
                   onDragEnter={() => setDrag(true)} onDragLeave={() => setDrag(false)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => { setDrag(false); handleFileDrop(e, setFile); }}
-                  style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, padding:"32px 16px", borderRadius:12, border:`2px dashed ${drag?accent:t.border}`, background:drag?`${accent}0a`:"transparent", cursor:"pointer" }}>
-                  <div style={{ color:drag?accent:t.muted }}>{ICONS.spreadsheet}</div>
-                  <div style={{ textAlign:"center" }}>
-                    <div style={{ fontSize:13, fontWeight:500, color:t.text, marginBottom:4 }}>Arraste o arquivo aqui</div>
-                    <div style={{ fontSize:12, color:t.muted }}>Formatos aceitos: .xlsx, .xls, .csv</div>
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      event.currentTarget.querySelector('input')?.click();
+                    }
+                  }}
+                  style={{ borderColor:drag?accent:t.border, background:drag?`${accent}0c`:'transparent' }}>
+                  <div style={{ width:48, height:48, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', color:drag?accent:t.muted, background:drag?`${accent}14`:(dark?'rgba(255,255,255,.04)':'#f1f5f9') }}>{ICONS.spreadsheet}</div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:650, color:t.text, marginBottom:4 }}>Selecione ou arraste o arquivo</div>
+                    <div style={{ fontSize:11, color:t.muted }}>.xlsx, .xls ou .csv</div>
                   </div>
-                  <span style={{ background:accent, color:"white", padding:"8px 20px", borderRadius:8, fontSize:12, fontWeight:600 }}>Selecionar Arquivo</span>
+                  <span style={{ color:accent, fontSize:11.5, fontWeight:700 }}>Escolher arquivo</span>
                   <input type="file" accept=".xlsx,.xls,.csv" style={{ display:"none" }} onChange={(e) => { if(e.target.files[0]) handleFileSelect(e.target.files[0], setFile); }} />
                 </label>
               )}
             </div>
-          </div>
+          </section>
         ))}
       </div>
 
-      {/* Período da auditoria */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:20, padding:"20px 24px" }}>
-        <label style={{ display:"block", fontSize:13, fontWeight:600, color:t.text, marginBottom:10 }}>
-          Período da auditoria
-          <span style={{ marginLeft:8, fontSize:11, fontWeight:400, color:t.muted }}>(opcional — sobrepõe a referência detectada automaticamente)</span>
-        </label>
-        <input
-          type="text"
-          value={periodoAuditoria}
-          onChange={e => setPeriodoAuditoria(e.target.value)}
-          placeholder="Ex: Primeira quinzena de março de 2025 / Abril completo / 01–15/04/2025"
-          style={{
-            width:"100%", padding:"10px 14px", borderRadius:10, fontSize:13,
-            border:`1.5px solid ${periodoAuditoria ? "#F47920" : t.border}`,
-            background:t.bg, color:t.text, outline:"none",
-            transition:"border-color .15s",
-          }}
-        />
-      </div>
-
-      {/* Configurações avançadas */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:28, overflow:"hidden" }}>
-        <button onClick={() => setAdvancedOpen((p)=>!p)} style={{ width:"100%", background:"none", border:"none", padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
-          <span style={{ fontSize:13.5, fontWeight:600, color:t.text }}>Configurações Avançadas</span>
-          <span style={{ color:t.muted, transform:advancedOpen?"rotate(180deg)":"rotate(0)", transition:"transform .2s" }}>{ICONS.chevronDown}</span>
-        </button>
-        {advancedOpen && (
-          <div style={{ padding:"0 20px 20px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            {[
-              { key:"ignorar",     label:"Ignorar diferenças < R$ 0,01" },
-              { key:"comparaNome", label:"Comparar por nome do paciente" },
-              { key:"ia",          label:"Gerar análise inteligente" },
-            ].map(({ key, label }) => (
-              <label key={key} style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={() => setConfigs((p) => ({ ...p, [key]:!p[key] }))}>
-                <div className={`checkbox-custom ${configs[key]?"checked":""}`}>
-                  {configs[key] && <div style={{ color:"white" }}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>}
-                </div>
-                <span style={{ fontSize:13, color:t.text }}>{label}</span>
-              </label>
-            ))}
+      <div className="audit-setup">
+        <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+          <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+            <div>
+              <div className="ui-panel-title" style={{ color:t.text }}>Referência da auditoria</div>
+              <div className="ui-panel-copy" style={{ color:t.muted }}>Opcional. Substitui o período detectado nos arquivos.</div>
+            </div>
+            <div className="ui-stat-icon" style={{ color:'#2563eb', background:'#2563eb14' }}>{ICONS.history}</div>
           </div>
-        )}
+          <div className="ui-panel-body">
+            <Field t={t} htmlFor="audit-period" label="Período ou competência">
+              <TextInput id="audit-period" t={t} dark={dark} type="text" value={periodoAuditoria}
+                onChange={event => setPeriodoAuditoria(event.target.value)}
+                placeholder="Ex: Abril de 2025 ou 01–15/04/2025"
+                style={{ border:`1.5px solid ${periodoAuditoria ? BRAND.orange : t.border}` }} />
+            </Field>
+          </div>
+        </section>
+
+        <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+          <button type="button" onClick={() => setAdvancedOpen(current => !current)} aria-expanded={advancedOpen}
+            className="ui-panel-head" style={{ width:'100%', border:0, borderBottom:advancedOpen?`1px solid ${t.border}`:'none', background:'transparent', cursor:'pointer', textAlign:'left' }}>
+            <div>
+              <div className="ui-panel-title" style={{ color:t.text }}>Opções de comparação</div>
+              <div className="ui-panel-copy" style={{ color:t.muted }}>{advancedOpen ? 'Ajuste as regras desta execução.' : 'Usando as opções recomendadas.'}</div>
+            </div>
+            <span style={{ color:t.muted, transform:advancedOpen?'rotate(180deg)':'rotate(0)', transition:'transform .2s', display:'flex' }}>{ICONS.chevronDown}</span>
+          </button>
+          {advancedOpen && (
+            <div className="ui-panel-body audit-options">
+              {[
+                { key:'ignorar', label:'Ignorar diferenças abaixo de R$ 0,01' },
+                { key:'comparaNome', label:'Comparar pacientes pelo nome' },
+                { key:'ia', label:'Gerar análise inteligente' },
+              ].map(({ key, label }) => (
+                <button key={key} type="button" role="checkbox" aria-checked={configs[key]} className="audit-option"
+                  onClick={() => setConfigs(current => ({ ...current, [key]:!current[key] }))}
+                  style={{ border:`1px solid ${configs[key]?'#F4792045':t.border}`, background:configs[key]?'#F479200d':'transparent', color:t.text, textAlign:'left' }}>
+                  <span className={`checkbox-custom ${configs[key]?'checked':''}`}>
+                    {configs[key] && <span style={{ color:'#fff', display:'flex' }}>{ICONS.check}</span>}
+                  </span>
+                  <span style={{ fontSize:12.5 }}>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
-      <div style={{ display:"flex", justifyContent:"center" }}>
-        <button className="btn-primary" onClick={startAudit} disabled={!canStart} style={{
-          background: canStart?"linear-gradient(135deg,#F47920,#1A2B6B)":(dark?"#1e293b":"#e2e8f0"),
-          color: canStart?"white":t.muted, border:"none", borderRadius:12,
-          padding:"14px 48px", fontSize:15, fontWeight:700, letterSpacing:"-.01em",
-          boxShadow: canStart?"0 4px 20px rgba(244,121,32,.35)":"none",
-          cursor: canStart?"pointer":"not-allowed",
-        }}>
-          {canStart ? "Iniciar Auditoria →" : "Faça upload dos dois arquivos"}
-        </button>
+      <div className="audit-action-bar" style={{ ...t.card, border:`1px solid ${canStart?'#05966945':t.border}`, borderRadius:RADIUS.lg }}>
+        <div className="audit-readiness">
+          <div className="audit-readiness-icon" style={{ color:canStart?'#059669':'#d97706', background:canStart?'#05966914':'#d9770614' }}>
+            {canStart ? ICONS.check : ICONS.warning}
+          </div>
+          <div>
+            <div className="audit-readiness-title" style={{ color:t.text }}>{canStart ? 'Tudo pronto para a comparação' : 'Selecione os dois relatórios'}</div>
+            <div className="audit-readiness-copy" style={{ color:t.muted }}>{canStart ? 'A auditoria será processada com as opções acima.' : 'Produção e repasse são necessários para continuar.'}</div>
+          </div>
+        </div>
+        <Button t={t} dark={dark} size="lg" onClick={startAudit} disabled={!canStart} style={{ minWidth:210 }}>
+          Iniciar auditoria {ICONS.chevronRight}
+        </Button>
       </div>
     </div>
   );
@@ -1791,39 +2205,46 @@ function ProcessingScreen({ dark, t, steps, progress }) {
     "Relatório gerado",
     "Insights calculados",
   ];
+  const completedSteps = steps.filter(Boolean).length;
+  const activeStep = Math.min(completedSteps, labels.length - 1);
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"70vh" }}>
-      <div className="fade-in" style={{ ...t.card, borderRadius:24, border:`1px solid ${t.border}`, padding:"48px 56px", maxWidth:480, width:"100%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,.15)" }}>
-        <div style={{ width:64, height:64, borderRadius:20, background:"linear-gradient(135deg,#F47920,#1A2B6B)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 24px", boxShadow:"0 8px 24px rgba(244,121,32,.4)" }}>
-          <div className="spin" style={{ color:"white" }}>{ICONS.loader}</div>
+    <div className="app-page-narrow fade-in" style={{ paddingTop:'clamp(18px,5vh,60px)' }}>
+      <section className="ui-panel" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${t.border}` }} aria-live="polite" aria-busy="true">
+        <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}`, alignItems:'center' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:44, height:44, borderRadius:8, background:'#1A2B6B', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff' }}>
+              <span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span>
+            </div>
+            <div>
+              <div style={{ fontSize:16, fontWeight:750, color:t.text }}>Processando auditoria</div>
+              <div style={{ fontSize:11.5, color:t.muted, marginTop:3 }}>{labels[activeStep]}</div>
+            </div>
+          </div>
+          <div style={{ fontSize:22, fontWeight:750, color:'#F47920' }}>{Math.round(progress)}%</div>
         </div>
-        <h2 style={{ fontSize:22, fontWeight:700, color:t.text, marginBottom:6, letterSpacing:"-.03em" }}>Analisando Arquivos</h2>
-        <p style={{ fontSize:13, color:t.muted, marginBottom:28 }}>Processando dados reais dos relatórios...</p>
 
-        <div style={{ background:dark?"#1e293b":"#f8fafc", borderRadius:12, padding:4, marginBottom:28 }}>
-          <div style={{ height:8, borderRadius:8, background:dark?"#0f172a":"#e2e8f0", overflow:"hidden" }}>
-            <div className="progress-bar" style={{ height:"100%", width:`${progress}%`, background:"linear-gradient(90deg,#F47920,#2B4AA0)", borderRadius:8 }} />
+        <div className="ui-panel-body">
+          <div style={{ height:8, borderRadius:8, background:dark?'#0f172a':'#e2e8f0', overflow:'hidden', marginBottom:24 }}
+            role="progressbar" aria-label="Progresso da auditoria" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress)}>
+            <div className="progress-bar" style={{ height:'100%', width:`${progress}%`, background:'#F47920', borderRadius:8 }} />
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:9 }}>
+            {labels.map((label, index) => {
+              const completed = steps[index];
+              const active = !completed && index === activeStep;
+              return (
+                <div key={label} className="step-item" style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 11px', borderRadius:9, border:`1px solid ${active?'#F4792050':t.border}`, background:active?'#F479200d':'transparent' }}>
+                  <div style={{ width:27, height:27, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background:completed?'#059669':(active?'#F47920':(dark?'#1e293b':'#f1f5f9')), color:completed||active?'#fff':t.muted }}>
+                    {completed ? ICONS.check : active ? <span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> : <span style={{ fontSize:10.5, fontWeight:700 }}>{index+1}</span>}
+                  </div>
+                  <span style={{ fontSize:12.5, color:completed||active?t.text:t.muted, fontWeight:completed||active?600:400 }}>{label}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
-
-        {(() => {
-          const activeStep = steps.filter(Boolean).length;
-          return (
-            <div style={{ display:"flex", flexDirection:"column", gap:14, textAlign:"left" }}>
-              {labels.map((label, i) => (
-                <div key={i} className="step-item" style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  <div style={{ width:28, height:28, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, background:steps[i]?"#F47920":(dark?"#1e293b":"#f1f5f9"), border:steps[i]?"none":`2px solid ${t.border}`, transition:"all .3s ease" }}>
-                    {steps[i]
-                      ? <div style={{ color:"white" }}>{ICONS.check}</div>
-                      : <div className={i===activeStep?"spin":""} style={{ color:t.muted, opacity:i===activeStep?1:0.3 }}>{ICONS.loader}</div>}
-                  </div>
-                  <span style={{ fontSize:13.5, color:steps[i]?t.text:t.muted, fontWeight:steps[i]?500:400, transition:"all .3s" }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-      </div>
+      </section>
     </div>
   );
 }
@@ -1848,7 +2269,16 @@ function ResultsScreen({ dark, t, selectedMedico, setSelectedMedico, resultados,
     setStatuses((s) => ({ ...s, [id]: order[(order.indexOf(s[id]??order[0])+1)%order.length] }));
   };
 
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [copiedInsight, setCopiedInsight] = useState(null);
+  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
+  const visibleDivs = divs.filter((row) => {
+    const matchesQuery = !normalizedQuery || String(row.medico || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery);
+    const matchesStatus = statusFilter === 'all' || getStatus(row.id) === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+  const statusFilters = [['all','Todos'], ['pendente','Pendentes'], ['revisado','Revisados'], ['corrigido','Corrigidos']];
   const copyInsight = (text, i) => {
     navigator.clipboard?.writeText(text);
     setCopiedInsight(i);
@@ -1856,167 +2286,220 @@ function ResultsScreen({ dark, t, selectedMedico, setSelectedMedico, resultados,
   };
 
   return (
-    <div className="fade-in" style={{ maxWidth:1100, margin:"0 auto" }}>
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28, flexWrap:"wrap", gap:16 }}>
+    <div className="app-page fade-in">
+      <div className="results-hero">
         <div>
-          <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:"-.03em", marginBottom:4 }}>Relatório de Auditoria</h1>
-          <p style={{ fontSize:13, color:t.muted }}>
-            Processado em {resultados?.processadoEm??"-"} · Referência: {resultados?.referencia??"-"}
+          <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:"-.03em", lineHeight:1.15 }}>Relatório de auditoria</h1>
+          <div className="results-context" style={{ color:t.muted }}>
+            Processado em {resultados?.processadoEm??'-'} · Referência: <strong style={{ color:t.text }}>{resultados?.referencia??'-'}</strong>
             {resultados && (
-              <span style={{ marginLeft:8, color:t.muted }}>· {resultados.file1Name} × {resultados.file2Name}</span>
+              <div style={{ marginTop:2, overflowWrap:'anywhere' }}>{resultados.file1Name} × {resultados.file2Name}</div>
             )}
-          </p>
+          </div>
         </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          <button className="btn-sm" onClick={onNewAudit} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:`1px solid ${t.border}`, background:"none", color:t.muted, fontSize:13, fontWeight:500, cursor:"pointer" }}>
-            {ICONS.plus}<span>Nova Auditoria</span>
-          </button>
-          <button className="btn-sm" onClick={onGenerateAI} disabled={!resultados || aiLoading} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 18px", borderRadius:9, border:"none", background: resultados && !aiLoading ? "linear-gradient(135deg,#F47920,#a78bfa)" : (dark?"#1e293b":"#e2e8f0"), color: resultados && !aiLoading ? "white" : t.muted, fontSize:13, fontWeight:600, cursor: resultados && !aiLoading ? "pointer" : "not-allowed", boxShadow: resultados && !aiLoading ? "0 4px 14px rgba(244,121,32,.4)" : "none", transition:"all .2s ease" }}>
-            {ICONS.brain}<span>{aiLoading ? "Gerando…" : "Relatório IA"}</span>
-          </button>
-          <button className="btn-sm" onClick={onExportPDF} disabled={!resultados} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:`1px solid ${t.border}`, background:"none", color:"#F47920", fontSize:13, fontWeight:500, cursor:resultados?"pointer":"not-allowed", opacity:resultados?1:0.5 }}>
-            {ICONS.export}<span>Exportar PDF</span>
-          </button>
-          <button className="btn-sm" onClick={onExportExcel} disabled={!resultados} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:`1px solid ${t.border}`, background:"none", color:"#10b981", fontSize:13, fontWeight:500, cursor:resultados?"pointer":"not-allowed", opacity:resultados?1:0.5 }}>
-            {ICONS.export}<span>Exportar Excel</span>
-          </button>
-          <button className="btn-sm" onClick={onShare} disabled={!resultados} style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, border:`1px solid ${t.border}`, background:"none", color:t.muted, fontSize:13, cursor:resultados?"pointer":"not-allowed", opacity:resultados?1:0.5 }}>
-            {ICONS.share}<span>Copiar resumo</span>
-          </button>
+        <div className="page-actions">
+          <Button t={t} dark={dark} variant="ghost" size="sm" onClick={onNewAudit}>{ICONS.plus} Nova auditoria</Button>
+          <Button t={t} dark={dark} size="sm" onClick={onGenerateAI} disabled={!resultados || aiLoading}>
+            {aiLoading ? <span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> : ICONS.brain}
+            {aiLoading ? 'Gerando...' : 'Relatório IA'}
+          </Button>
+          <Button t={t} dark={dark} variant="ghost" size="sm" onClick={onExportPDF} disabled={!resultados} style={{ color:'#F47920' }}>{ICONS.export} PDF</Button>
+          <Button t={t} dark={dark} variant="ghost" size="sm" onClick={onExportExcel} disabled={!resultados} style={{ color:'#059669' }}>{ICONS.export} Excel</Button>
+          <Button t={t} dark={dark} variant="ghost" size="sm" onClick={onShare} disabled={!resultados}>{ICONS.share} Copiar resumo</Button>
         </div>
       </div>
 
-      {/* Métricas */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:28 }}>
+      <div className="ui-stat-grid" aria-label="Resumo da auditoria">
         {metrics.map(({ label, value, icon, color, bg }) => (
-          <div key={label} className="metric-card" style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, padding:"20px 20px 18px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <span style={{ fontSize:12, color:t.muted, fontWeight:500 }}>{label}</span>
-              <div style={{ width:36, height:36, borderRadius:10, background:bg, display:"flex", alignItems:"center", justifyContent:"center", color }}>{icon}</div>
+          <div key={label} className="ui-stat metric-card" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${t.border}` }}>
+            <div className="ui-stat-top">
+              <div className="ui-stat-icon" style={{ background:bg, color }}>{icon}</div>
+              <div className="ui-stat-value" style={{ color:t.text, fontSize:String(value).length>10?17:24 }}>{value}</div>
             </div>
-            <div style={{ fontSize:String(value).length>8?18:26, fontWeight:700, color:t.text, letterSpacing:"-.03em", fontFamily:"'DM Mono',monospace" }}>{value}</div>
+            <div>
+              <div className="ui-stat-label" style={{ color:t.text }}>{label}</div>
+              <div className="ui-stat-detail" style={{ color:t.muted }}>Resultado consolidado</div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Tabela de médicos */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:24, overflow:"hidden" }}>
-        <div style={{ padding:"20px 24px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-          <h2 style={{ fontSize:15, fontWeight:600, color:t.text }}>Médicos com Divergência</h2>
-          {divs.length>0 && <span className="badge" style={{ background:"#ef444415", color:"#ef4444" }}>{divs.length} médico{divs.length!==1?"s":""}</span>}
+      <section className="ui-panel" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${t.border}`, marginBottom:18 }} aria-label="Médicos com divergências">
+        <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+          <div>
+            <div className="ui-panel-title" style={{ color:t.text }}>Médicos com divergências</div>
+            <div className="ui-panel-copy" style={{ color:t.muted }}>Acompanhe os valores e altere o status conforme a revisão.</div>
+          </div>
+          {divs.length>0 && <span className="badge" style={{ background:'#dc262616', color:'#dc2626', padding:'5px 9px' }}>{divs.length} médico{divs.length!==1?'s':''}</span>}
         </div>
+
+        {divs.length>0 && (
+          <>
+            <div className="ui-toolbar" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div className="ui-search">
+                <span aria-hidden="true" style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:t.muted, display:'flex', pointerEvents:'none' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+                </span>
+                <TextInput t={t} dark={dark} value={query} aria-label="Buscar médico" placeholder="Buscar médico"
+                  onChange={event => setQuery(event.target.value)} style={{ paddingLeft:39, paddingRight:query?40:14 }} />
+                {query && (
+                  <button type="button" className="cs-icon-btn" aria-label="Limpar busca" onClick={() => setQuery('')}
+                    style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color:t.muted, width:28, height:28 }}>
+                    {ICONS.x}
+                  </button>
+                )}
+              </div>
+              <div className="ui-toolbar-group" aria-label="Filtrar por status">
+                {statusFilters.map(([value, label]) => {
+                  const selected = statusFilter === value;
+                  return (
+                    <button key={value} type="button" className="ui-filter" aria-pressed={selected} onClick={() => setStatusFilter(value)}
+                      style={{ borderColor:selected?'#F4792060':t.border, background:selected?'#F4792014':'transparent', color:selected?'#F47920':t.muted }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="ui-count-bar" style={{ color:t.muted, background:dark?'rgba(255,255,255,.015)':'rgba(15,23,42,.018)' }}>
+              Exibindo <strong style={{ color:t.text }}>{visibleDivs.length}</strong> de {divs.length} médico(s)
+            </div>
+          </>
+        )}
+
         {divs.length===0 ? (
           <EmptyState t={t}
             mensagem={resultados ? "Nenhuma divergência encontrada." : "Nenhuma auditoria processada."}
             sub={resultados ? "Os relatórios de produção e repasse estão em plena conformidade." : "Faça upload dos arquivos e inicie a auditoria para ver os resultados aqui."} />
-        ) : (
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr style={{ background:dark?"#0f172a":"#f8fafc" }}>
-                  {["Médico","Produção","Repasse","Diferença","Divergências","Status","Ações"].map((h) => (
-                    <th key={h} style={{ padding:"12px 20px", textAlign:"left", fontSize:11, fontWeight:600, color:t.muted, letterSpacing:".05em", textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {divs.map((row) => {
-                  const st = getStatus(row.id);
-                  return (
-                    <tr key={row.id} className="table-row" style={{ borderTop:`1px solid ${t.border}` }}>
-                      <td style={{ padding:"14px 20px" }}>
-                        <div style={{ fontSize:13.5, fontWeight:600, color:t.text }}>{row.medico}</div>
-                        {row.detalhes.length>0 && <div style={{ fontSize:11, color:t.muted, marginTop:2 }}>{row.detalhes.length} paciente{row.detalhes.length!==1?"s":""} divergente{row.detalhes.length!==1?"s":""}</div>}
-                      </td>
-                      <td style={{ padding:"14px 20px", fontSize:13, color:t.text, fontFamily:"'DM Mono',monospace" }}>{row.producao}</td>
-                      <td style={{ padding:"14px 20px", fontSize:13, color:t.text, fontFamily:"'DM Mono',monospace" }}>{row.repasse}</td>
-                      <td style={{ padding:"14px 20px" }}>
-                        {row.sentido === "prod_maior"
-                          ? <span title="Produção maior que repasse — possível subpagamento" style={{ fontSize:13, fontWeight:700, color:"#f59e0b", fontFamily:"'DM Mono',monospace" }}>↑Prod {row.diferenca}</span>
-                          : <span title="Repasse maior que produção — possível sobrepagamento" style={{ fontSize:13, fontWeight:700, color:"#ef4444", fontFamily:"'DM Mono',monospace" }}>↑Rep {row.diferenca}</span>
-                        }
-                      </td>
-                      <td style={{ padding:"14px 20px" }}>
-                        <span className="badge" style={{ background:"#ef444415", color:"#ef4444" }}>{row.detalhes.length||"?"}</span>
-                      </td>
-                      <td style={{ padding:"14px 20px" }}>
-                        <button className="btn-sm" onClick={() => cycleStatus(row.id)} style={{ cursor:"pointer", background:"none", border:"none", padding:0 }}>
-                          <span className="badge" style={{ background:`${statusColors[st]}18`, color:statusColors[st], cursor:"pointer" }}>{statusLabels[st]}</span>
-                        </button>
-                      </td>
-                      <td style={{ padding:"14px 20px" }}>
-                        <button className="btn-sm" onClick={() => setSelectedMedico({ ...row, status:st })} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 14px", borderRadius:8, border:`1px solid ${t.border}`, background:"none", color:"#F47920", fontSize:12, fontWeight:500, cursor:"pointer" }}>
-                          {ICONS.eye}<span>Detalhar</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        ) : visibleDivs.length===0 ? (
+          <div style={{ padding:'42px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:14, fontWeight:700, color:t.text }}>Nenhum médico encontrado</div>
+            <div style={{ fontSize:12, color:t.muted, margin:'5px 0 16px' }}>Ajuste a busca ou o filtro de status.</div>
+            <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => { setQuery(''); setStatusFilter('all'); }}>Limpar filtros</Button>
           </div>
-        )}
-      </div>
+        ) : (
+          <>
+            <div className="ui-table-wrap">
+              <table className="ui-table" style={{ minWidth:940 }}>
+                <thead style={{ background:dark?'#0f172a':'#f8fafc' }}>
+                  <tr>
+                    {['Médico','Produção','Repasse','Diferença','Itens','Status'].map(label => <th key={label} style={{ color:t.muted }}>{label}</th>)}
+                    <th style={{ color:t.muted, textAlign:'right' }}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleDivs.map(row => {
+                    const status = getStatus(row.id);
+                    const detailCount = row.detalhes?.length || 0;
+                    const productionHigher = row.sentido === 'prod_maior';
+                    return (
+                      <tr key={row.id} className="table-row" style={{ borderTop:`1px solid ${t.border}` }}>
+                        <td>
+                          <div style={{ fontSize:13.5, fontWeight:650, color:t.text }}>{row.medico}</div>
+                          <div style={{ fontSize:10.5, color:t.muted, marginTop:2 }}>{detailCount ? `${detailCount} paciente(s)` : 'Sem detalhamento'}</div>
+                        </td>
+                        <td style={{ color:t.text, fontWeight:600 }}>{row.producao}</td>
+                        <td style={{ color:t.text, fontWeight:600 }}>{row.repasse}</td>
+                        <td><span title={productionHigher?'Produção maior que repasse':'Repasse maior que produção'} style={{ color:productionHigher?'#d97706':'#dc2626', fontWeight:700 }}>{productionHigher?'Prod':'Rep'} {row.diferenca}</span></td>
+                        <td><span className="badge" style={{ background:'#dc262616', color:'#dc2626' }}>{detailCount||'—'}</span></td>
+                        <td>
+                          <button type="button" className="btn-sm" onClick={() => cycleStatus(row.id)} aria-label={`Alterar status de ${row.medico}. Atual: ${statusLabels[status]}`}
+                            style={{ cursor:'pointer', background:'none', border:'none', padding:0 }}>
+                            <span className="badge" style={{ background:`${statusColors[status]}18`, color:statusColors[status], padding:'5px 9px' }}>{statusLabels[status]}</span>
+                          </button>
+                        </td>
+                        <td>
+                          <div className="ui-table-actions">
+                            <Button t={t} dark={dark} variant="subtle" size="sm" onClick={() => setSelectedMedico({ ...row, status })} style={{ padding:'7px 10px', fontSize:11.5 }}>{ICONS.eye} Detalhar</Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-      {/* Análise Inteligente */}
-      <div className="ai-card" style={{ ...t.card, borderRadius:16, border:`1px solid ${dark?"#F4792030":"#F4792020"}`, padding:24, boxShadow:`0 4px 20px ${dark?"rgba(244,121,32,.1)":"rgba(244,121,32,.06)"}` }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
-          <div style={{ width:40, height:40, borderRadius:12, background:"linear-gradient(135deg,#F47920,#1A2B6B)", display:"flex", alignItems:"center", justifyContent:"center", color:"white", boxShadow:"0 4px 12px rgba(244,121,32,.35)" }}>
+            <div className="results-mobile-list">
+              {visibleDivs.map(row => {
+                const status = getStatus(row.id);
+                const detailCount = row.detalhes?.length || 0;
+                const productionHigher = row.sentido === 'prod_maior';
+                return (
+                  <article key={row.id} className="result-card" style={{ border:`1px solid ${t.border}`, background:dark?'rgba(255,255,255,.018)':'#fff' }}>
+                    <div className="ui-mobile-head">
+                      <div>
+                        <div style={{ fontSize:13.5, fontWeight:700, color:t.text }}>{row.medico}</div>
+                        <div style={{ fontSize:10.5, color:t.muted, marginTop:3 }}>{detailCount ? `${detailCount} paciente(s) com divergência` : 'Sem detalhamento por paciente'}</div>
+                      </div>
+                      <span className="badge" style={{ background:`${statusColors[status]}18`, color:statusColors[status] }}>{statusLabels[status]}</span>
+                    </div>
+                    <div className="result-values">
+                      {[['Produção',row.producao,t.text],['Repasse',row.repasse,t.text],['Diferença',row.diferenca,productionHigher?'#d97706':'#dc2626']].map(([label,value,color]) => (
+                        <div key={label} className="result-value" style={{ background:dark?'#0f172a':'#f8fafc', border:`1px solid ${t.border}` }}>
+                          <div className="result-value-label" style={{ color:t.muted }}>{label}</div>
+                          <div className="result-value-number" style={{ color }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="ui-mobile-actions">
+                      <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => cycleStatus(row.id)}>Avançar status</Button>
+                      <Button t={t} dark={dark} variant="subtle" size="sm" onClick={() => setSelectedMedico({ ...row, status })}>{ICONS.eye} Ver detalhes</Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="ui-panel ai-card" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${dark?'#F4792030':'#F4792020'}` }}>
+        <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+          <div style={{ width:40, height:40, borderRadius:8, background:"#1A2B6B", display:"flex", alignItems:"center", justifyContent:"center", color:"white" }}>
             {ICONS.brain}
           </div>
-          <div>
-            <div style={{ fontSize:14, fontWeight:700, color:t.text, letterSpacing:"-.02em" }}>Análise Inteligente</div>
-            <div style={{ fontSize:11, color:"#F47920", fontWeight:500 }}>Gerado automaticamente · {resultados?.processadoEm??"-"}</div>
+          <div style={{ flex:1 }}>
+            <div className="ui-panel-title" style={{ color:t.text }}>Análise inteligente</div>
+            <div className="ui-panel-copy" style={{ color:t.muted }}>Pontos de atenção identificados automaticamente · {resultados?.processadoEm??'-'}</div>
           </div>
         </div>
-        {insights.length===0 ? (
-          <div style={{ padding:20, textAlign:"center", color:t.muted, fontSize:13 }}>A análise aparecerá aqui após o processamento da auditoria.</div>
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {insights.map((ins, i) => (
-              <div key={i} style={{ display:"flex", gap:10, padding:"12px 16px", borderRadius:10, background:dark?"rgba(255,255,255,.03)":"rgba(244,121,32,.04)", border:`1px solid ${dark?"rgba(255,255,255,.06)":"rgba(244,121,32,.1)"}` }}>
-                <div style={{ width:6, height:6, borderRadius:"50%", background:"#F47920", marginTop:7, flexShrink:0 }} />
-                <span style={{ fontSize:13.5, color:t.text, lineHeight:1.6, flex:1 }}>{ins}</span>
-                <button className="btn-sm" onClick={() => copyInsight(ins, i)} style={{ background:"none", border:"none", color:copiedInsight===i?"#10b981":t.muted, cursor:"pointer", flexShrink:0, padding:2 }}>
-                  {ICONS.copy}
-                </button>
+        <div className="ui-panel-body">
+          {insights.length===0 ? (
+            <div style={{ padding:20, textAlign:'center', color:t.muted, fontSize:13 }}>A análise aparecerá aqui após o processamento da auditoria.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+              {insights.map((insight, index) => (
+                <div key={index} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'11px 13px', borderRadius:9, background:dark?'rgba(255,255,255,.025)':'#f8fafc', border:`1px solid ${t.border}` }}>
+                  <div style={{ width:6, height:6, borderRadius:'50%', background:'#F47920', marginTop:7, flexShrink:0 }} />
+                  <span style={{ fontSize:13, color:t.text, lineHeight:1.6, flex:1 }}>{insight}</span>
+                  <button type="button" className="cs-icon-btn" onClick={() => copyInsight(insight, index)}
+                    aria-label="Copiar insight" title={copiedInsight===index?'Copiado':'Copiar'} style={{ color:copiedInsight===index?'#059669':t.muted, flexShrink:0 }}>
+                    {copiedInsight===index ? ICONS.check : ICONS.copy}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {selectedMedico && (
+        <Drawer t={t} title={selectedMedico.medico} subtitle="Detalhamento das divergências por paciente" onClose={() => setSelectedMedico(null)}>
+          <div className="detail-metrics">
+            {[
+              { label:'Produção', value:selectedMedico.producao, color:'#F47920' },
+              { label:'Repasse', value:selectedMedico.repasse, color:'#059669' },
+              { label:'Diferença', value:selectedMedico.diferenca, color:'#dc2626' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="detail-metric" style={{ background:dark?'#0f172a':'#f8fafc', border:`1px solid ${t.border}` }}>
+                <div style={{ fontSize:10.5, color:t.muted, marginBottom:5 }}>{label}</div>
+                <div style={{ fontSize:13, fontWeight:700, color }}>{value}</div>
               </div>
             ))}
           </div>
-        )}
-      </div>
 
-      {/* Drawer detalhe médico */}
-      {selectedMedico && (
-        <>
-          <div className="drawer-overlay" onClick={() => setSelectedMedico(null)} />
-          <div className="drawer" style={{ ...t.card, borderLeft:`1px solid ${t.border}`, padding:0 }}>
-            <div style={{ padding:"20px 24px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, ...t.card, zIndex:1 }}>
-              <div>
-                <div style={{ fontSize:15, fontWeight:700, color:t.text }}>{selectedMedico.medico}</div>
-                <div style={{ fontSize:12, color:t.muted, marginTop:2 }}>Detalhamento de divergências por paciente</div>
-              </div>
-              <button className="btn-sm" onClick={() => setSelectedMedico(null)} style={{ background:"none", border:"none", color:t.muted, cursor:"pointer", padding:4 }}>
-                {ICONS.x}
-              </button>
-            </div>
-            <div style={{ padding:24 }}>
-              {/* Mini métricas do médico */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:24 }}>
-                {[
-                  { label:"Produção", value:selectedMedico.producao, color:"#F47920" },
-                  { label:"Repasse",  value:selectedMedico.repasse,  color:"#10b981" },
-                  { label:"Diferença",value:selectedMedico.diferenca, color:"#ef4444" },
-                ].map(({ label, value, color }) => (
-                  <div key={label} style={{ padding:14, borderRadius:12, background:dark?"#0f172a":"#f8fafc", border:`1px solid ${t.border}`, textAlign:"center" }}>
-                    <div style={{ fontSize:11, color:t.muted, marginBottom:6 }}>{label}</div>
-                    <div style={{ fontSize:13, fontWeight:700, color, fontFamily:"'DM Mono',monospace" }}>{value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Distribuição de tipos */}
-              {selectedMedico.detalhes?.length>0 && (() => {
+          {selectedMedico.detalhes?.length>0 && (() => {
                 const freq = selectedMedico.detalhes.reduce((a, d) => { a[d.tipo]=(a[d.tipo]||0)+1; return a; }, {});
                 return (
                   <div style={{ marginBottom:20, display:"flex", flexWrap:"wrap", gap:6 }}>
@@ -2030,55 +2513,50 @@ function ResultsScreen({ dark, t, selectedMedico, setSelectedMedico, resultados,
                     })}
                   </div>
                 );
-              })()}
+          })()}
 
-              <h3 style={{ fontSize:12, fontWeight:700, color:t.text, marginBottom:14, textTransform:"uppercase", letterSpacing:".06em" }}>
-                Detalhamento por Paciente
-                {selectedMedico.detalhes?.length>0 && <span style={{ color:t.muted, fontWeight:500 }}> — {selectedMedico.detalhes.length} item{selectedMedico.detalhes.length!==1?"s":""}</span>}
-              </h3>
+          <h3 style={{ fontSize:12, fontWeight:700, color:t.text, marginBottom:14, textTransform:'uppercase', letterSpacing:'.06em' }}>
+            Detalhamento por paciente
+            {selectedMedico.detalhes?.length>0 && <span style={{ color:t.muted, fontWeight:500 }}> · {selectedMedico.detalhes.length} item{selectedMedico.detalhes.length!==1?'s':''}</span>}
+          </h3>
 
-              {!selectedMedico.detalhes?.length ? (
-                <div style={{ textAlign:"center", color:t.muted, fontSize:13, padding:24 }}>
-                  {selectedMedico.detalhes?.length===0
-                    ? "Comparação por paciente desabilitada. Ative em Configurações Avançadas."
-                    : "Sem detalhamento disponível."}
-                </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  {selectedMedico.detalhes.map((d, i) => {
-                    const { bg, color } = tipoStyle(d.tipo);
+          {!selectedMedico.detalhes?.length ? (
+            <div style={{ textAlign:'center', color:t.muted, fontSize:13, padding:24 }}>
+              {selectedMedico.detalhes?.length===0 ? 'A comparação por paciente não estava habilitada nesta auditoria.' : 'Sem detalhamento disponível.'}
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {selectedMedico.detalhes.map((detail, index) => {
+                    const { bg, color } = tipoStyle(detail.tipo);
                     return (
-                      <div key={i} style={{ padding:"14px 16px", borderRadius:12, border:`1px solid ${t.border}`, background:dark?"#0f172a":"#fafafa" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10, gap:8 }}>
-                          <span style={{ fontSize:13, fontWeight:600, color:t.text, flex:1 }}>{d.paciente}</span>
-                          <span title={d.tipo} style={{ fontSize:13, fontWeight:700, color: d.tipo?.includes("Produção") ? "#f59e0b" : "#ef4444", fontFamily:"'DM Mono',monospace", whiteSpace:"nowrap" }}>
-                            {d.tipo === "Maior na Produção" || d.tipo === "Ausente no Repasse" ? "↑Prod" : "↑Rep"} {d.diferenca}
+                      <div key={index} style={{ padding:'14px 15px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#0f172a':'#fafafa' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10, gap:8 }}>
+                          <span style={{ fontSize:13, fontWeight:650, color:t.text, flex:1 }}>{detail.paciente}</span>
+                          <span title={detail.tipo} style={{ fontSize:12.5, fontWeight:700, color:detail.tipo?.includes('Produção')?'#d97706':'#dc2626', whiteSpace:'nowrap' }}>
+                            {detail.tipo === 'Maior na Produção' || detail.tipo === 'Ausente no Repasse' ? 'Prod' : 'Rep'} {detail.diferenca}
                           </span>
                         </div>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:10 }}>
-                          {[["Produção",d.producao],["Repasse",d.repasse]].map(([l,v]) => (
-                            <div key={l} style={{ fontSize:12, color:t.muted }}>
-                              {l}: <span style={{ color:t.text, fontFamily:"'DM Mono',monospace" }}>{v}</span>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
+                          {[["Produção",detail.producao],["Repasse",detail.repasse]].map(([label,value]) => (
+                            <div key={label} style={{ fontSize:11.5, color:t.muted }}>
+                              {label}: <span style={{ color:t.text, fontWeight:600 }}>{value}</span>
                             </div>
                           ))}
                         </div>
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-                          <span className="badge" style={{ background:bg, color, display:"flex", alignItems:"center", gap:4 }}>
-                            {ICONS.tag}&nbsp;{d.tipo}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span className="badge" style={{ background:bg, color, gap:4 }}>
+                            {ICONS.tag}&nbsp;{detail.tipo}
                           </span>
-                          <button className="btn-sm" onClick={() => navigator.clipboard?.writeText(`Paciente: ${d.paciente} | Produção: ${d.producao} | Repasse: ${d.repasse} | Diferença: ${d.diferenca} | Tipo: ${d.tipo}`)}
-                            style={{ background:"none", border:`1px solid ${t.border}`, borderRadius:7, padding:"5px 10px", fontSize:11, color:t.muted, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
-                            {ICONS.copy}<span>Copiar</span>
-                          </button>
+                          <Button t={t} dark={dark} variant="ghost" size="sm"
+                            onClick={() => navigator.clipboard?.writeText(`Paciente: ${detail.paciente} | Produção: ${detail.producao} | Repasse: ${detail.repasse} | Diferença: ${detail.diferenca} | Tipo: ${detail.tipo}`)}
+                            style={{ padding:'6px 9px', fontSize:10.5 }}>{ICONS.copy} Copiar</Button>
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              )}
+              })}
             </div>
-          </div>
-        </>
+          )}
+        </Drawer>
       )}
     </div>
   );
@@ -2101,93 +2579,250 @@ function EmptyState({ t, mensagem, sub }) {
 function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
   const isAdmin = currentUser?.role === 'admin';
   const [confirmDel, setConfirmDel] = useState(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
+  const withDifferences = historico.filter(row => Number(row.divergencias) > 0);
+  const totalDifferences = historico.reduce((total, row) => total + (Number(row.divergencias) || 0), 0);
+  const withAI = historico.filter(row => row.aiReportHTML);
+  const visibleHistory = historico.filter((row) => {
+    const matchesQuery = !normalizedQuery || [row.data, row.periodo, row.arquivos, row.userName]
+      .some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery));
+    const matchesFilter = filter === 'all'
+      || (filter === 'differences' && Number(row.divergencias) > 0)
+      || (filter === 'compliant' && Number(row.divergencias) === 0)
+      || (filter === 'ai' && row.aiReportHTML);
+    return matchesQuery && matchesFilter;
+  });
+  const filters = [
+    ['all', 'Todas'],
+    ['differences', 'Com divergências'],
+    ['compliant', 'Conformes'],
+    ['ai', 'Com relatório IA'],
+  ];
+  const stats = [
+    { label:'Auditorias salvas', value:historico.length, detail:'Neste navegador', icon:ICONS.history, color:'#2563eb' },
+    { label:'Com divergências', value:withDifferences.length, detail:'Requerem revisão', icon:ICONS.alert, color:'#d97706' },
+    { label:'Divergências', value:totalDifferences, detail:'Total identificado', icon:ICONS.trending, color:'#dc2626' },
+    { label:'Relatórios IA', value:withAI.length, detail:'Análises disponíveis', icon:ICONS.brain, color:'#059669' },
+  ];
+
+  const openAIReport = (row) => {
+    const report = new Blob([row.aiReportHTML], { type:'text/html;charset=utf-8' });
+    window.open(URL.createObjectURL(report), '_blank');
+  };
+
+  const renderActions = (row, mobile = false) => (
+    <div className={mobile ? 'ui-mobile-actions' : 'ui-table-actions'}>
+      {row.resultados && (
+        <Button t={t} dark={dark} variant="subtle" size="sm" onClick={() => onOpen(row)} style={{ padding:'7px 10px', fontSize:11.5 }}>
+          {ICONS.eye} Abrir
+        </Button>
+      )}
+      {row.resultados && (
+        <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => exportExcel(row.resultados)} style={{ padding:'7px 10px', fontSize:11.5, color:'#059669', borderColor:'#05966940' }}>
+          {ICONS.export} Excel
+        </Button>
+      )}
+      {row.aiReportHTML && (
+        <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => openAIReport(row)} style={{ padding:'7px 10px', fontSize:11.5, color:'#7c3aed', borderColor:'#7c3aed40' }}>
+          {ICONS.brain} Relatório IA
+        </Button>
+      )}
+      <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => setConfirmDel(row)}
+        aria-label={`Excluir auditoria ${row.periodo || row.data}`} style={{ padding:'7px 10px', fontSize:11.5, color:'#dc2626', borderColor:'#dc262640' }}>
+        {ICONS.x} Excluir
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="fade-in" style={{ maxWidth:900, margin:"0 auto" }}>
-      <div style={{ marginBottom:28 }}>
-        <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:"-.03em", marginBottom:4 }}>Histórico de Auditorias</h1>
-        <p style={{ fontSize:13, color:t.muted }}>Relatórios gerados e salvos neste navegador.</p>
+    <div className="app-page fade-in">
+      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios armazenados neste navegador." />
+
+      <div className="ui-stat-grid" aria-label="Resumo do histórico">
+        {stats.map(stat => (
+          <div key={stat.label} className="ui-stat" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="ui-stat-top">
+              <div className="ui-stat-icon" style={{ color:stat.color, background:`${stat.color}14` }}>{stat.icon}</div>
+              <div className="ui-stat-value" style={{ color:t.text }}>{stat.value}</div>
+            </div>
+            <div>
+              <div className="ui-stat-label" style={{ color:t.text }}>{stat.label}</div>
+              <div className="ui-stat-detail" style={{ color:t.muted }}>{stat.detail}</div>
+            </div>
+          </div>
+        ))}
       </div>
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, overflow:"hidden" }}>
-        {historico.length===0 ? (
-          <EmptyState t={t} mensagem="Nenhuma auditoria realizada ainda." sub="Os relatórios gerados aparecerão aqui automaticamente após cada auditoria." />
-        ) : (
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr style={{ background:dark?"#0f172a":"#f8fafc" }}>
-                  {["Data","Referência","Arquivos", ...(isAdmin ? ["Auditor"] : []), "Divergências","Valor Total",""].map((h) => (
-                    <th key={h} style={{ padding:"12px 20px", textAlign:"left", fontSize:11, fontWeight:600, color:t.muted, letterSpacing:".05em", textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {historico.map((row) => (
-                  <tr key={row.id} className="table-row" style={{ borderTop:`1px solid ${t.border}` }}>
-                    <td style={{ padding:"16px 20px", fontSize:13, color:t.text, fontFamily:"'DM Mono',monospace" }}>{row.data}</td>
-                    <td style={{ padding:"16px 20px", fontSize:13, fontWeight:600, color:t.text }}>{row.periodo}</td>
-                    <td style={{ padding:"16px 20px", fontSize:12, color:t.muted, maxWidth:220 }}>
-                      <div style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{row.arquivos}</div>
-                    </td>
-                    {isAdmin && (
-                      <td style={{ padding:"16px 20px", fontSize:12, whiteSpace:"nowrap" }}>
-                        {row.userName ? (
-                          <span style={{ display:"inline-flex", alignItems:"center", gap:6, background:dark?"#1e293b":"#f1f5f9", borderRadius:20, padding:"3px 10px" }}>
-                            <span style={{ width:22, height:22, borderRadius:"50%", background:"#F47920", color:"#fff", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                              {row.userName.charAt(0).toUpperCase()}
-                            </span>
-                            <span style={{ color:t.text, fontWeight:500 }}>{row.userName}</span>
-                          </span>
-                        ) : (
-                          <span style={{ color:t.muted, fontStyle:"italic" }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    <td style={{ padding:"16px 20px" }}>
-                      <span className="badge" style={{ background:row.divergencias>0?"#ef444415":"#10b98115", color:row.divergencias>0?"#ef4444":"#10b981" }}>{row.divergencias}</span>
-                    </td>
-                    <td style={{ padding:"16px 20px", fontSize:13, color:t.text, fontFamily:"'DM Mono',monospace" }}>{row.valor}</td>
-                    <td style={{ padding:"16px 20px" }}>
-                      {confirmDel === row.id ? (
-                        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                          <span style={{ fontSize:11, color:t.muted, whiteSpace:"nowrap" }}>Apagar?</span>
-                          <button onClick={() => { onDelete(row.id); setConfirmDel(null); }} style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#ef4444", color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>Sim</button>
-                          <button onClick={() => setConfirmDel(null)} style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${t.border}`, background:"none", color:t.muted, fontSize:11, cursor:"pointer" }}>Não</button>
-                        </div>
-                      ) : (
-                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                          {row.resultados && (
-                            <button className="btn-sm" onClick={() => onOpen(row)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, border:`1px solid ${t.border}`, background:"none", color:"#F47920", fontSize:12, fontWeight:500, cursor:"pointer" }}>
-                              {ICONS.eye}<span>Ver</span>
-                            </button>
-                          )}
-                          {row.resultados && (
-                            <button className="btn-sm" onClick={() => exportExcel(row.resultados)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, border:`1px solid ${t.border}`, background:"none", color:"#10b981", fontSize:12, cursor:"pointer" }}>
-                              {ICONS.export}<span>Excel</span>
-                            </button>
-                          )}
-                          {row.aiReportHTML && (
-                            <button className="btn-sm" onClick={() => { const b=new Blob([row.aiReportHTML],{type:"text/html;charset=utf-8"}); window.open(URL.createObjectURL(b),"_blank"); }} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, border:`1px solid ${t.border}`, background:"none", color:"#8b5cf6", fontSize:12, cursor:"pointer" }}>
-                              {ICONS.brain}<span>IA</span>
-                            </button>
-                          )}
-                          <button className="btn-sm" onClick={() => setConfirmDel(row.id)} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 10px", borderRadius:7, border:`1px solid ${t.border}`, background:"none", color:"#ef4444", fontSize:12, cursor:"pointer" }}>
-                            {ICONS.x}
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+      <section className="ui-panel" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${t.border}` }} aria-label="Registros de auditoria">
+        <div className="ui-toolbar" style={{ borderBottom:`1px solid ${t.border}` }}>
+          <div className="ui-search">
+            <span aria-hidden="true" style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:t.muted, display:'flex', pointerEvents:'none' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <TextInput t={t} dark={dark} value={query} aria-label="Buscar no histórico" placeholder="Buscar por período, arquivo ou auditor"
+              onChange={event => setQuery(event.target.value)} style={{ paddingLeft:39, paddingRight:query?40:14 }} />
+            {query && (
+              <button type="button" className="cs-icon-btn" aria-label="Limpar busca" onClick={() => setQuery('')}
+                style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color:t.muted, width:28, height:28 }}>
+                {ICONS.x}
+              </button>
+            )}
+          </div>
+          <div className="ui-toolbar-group" aria-label="Filtrar histórico">
+            {filters.map(([value, label]) => {
+              const selected = filter === value;
+              return (
+                <button key={value} type="button" className="ui-filter" aria-pressed={selected} onClick={() => setFilter(value)}
+                  style={{ borderColor:selected?'#F4792060':t.border, background:selected?'#F4792014':'transparent', color:selected?'#F47920':t.muted }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {historico.length>0 && (
+          <div className="ui-count-bar" style={{ color:t.muted, background:dark?'rgba(255,255,255,.015)':'rgba(15,23,42,.018)' }}>
+            Exibindo <strong style={{ color:t.text }}>{visibleHistory.length}</strong> de {historico.length} auditoria(s)
           </div>
         )}
-      </div>
+
+        {historico.length===0 ? (
+          <EmptyState t={t} mensagem="Nenhuma auditoria realizada ainda." sub="Os relatórios gerados aparecerão aqui automaticamente após cada auditoria." />
+        ) : visibleHistory.length===0 ? (
+          <div style={{ padding:'44px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:14, fontWeight:700, color:t.text }}>Nenhuma auditoria encontrada</div>
+            <div style={{ fontSize:12, color:t.muted, margin:'5px 0 16px' }}>Ajuste a busca ou escolha outro filtro.</div>
+            <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => { setQuery(''); setFilter('all'); }}>Limpar filtros</Button>
+          </div>
+        ) : (
+          <>
+            <div className="ui-table-wrap">
+              <table className="ui-table" style={{ minWidth:isAdmin?1080:960 }}>
+                <thead style={{ background:dark?'#0f172a':'#f8fafc' }}>
+                  <tr>
+                    {["Data","Referência","Arquivos", ...(isAdmin ? ["Auditor"] : []), "Resultado","Valor total"].map(label => <th key={label} style={{ color:t.muted }}>{label}</th>)}
+                    <th style={{ color:t.muted, textAlign:'right' }}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleHistory.map(row => (
+                    <tr key={row.id} className="table-row" style={{ borderTop:`1px solid ${t.border}` }}>
+                      <td style={{ color:t.text, whiteSpace:'nowrap' }}>{row.data}</td>
+                      <td style={{ color:t.text, fontWeight:650 }}>{row.periodo||'—'}</td>
+                      <td style={{ color:t.muted, maxWidth:220 }}><div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.arquivos||'—'}</div></td>
+                      {isAdmin && <td style={{ color:t.text }}>{row.userName||'—'}</td>}
+                      <td>
+                        <span className="badge" style={{ background:Number(row.divergencias)>0?'#dc262616':'#05966916', color:Number(row.divergencias)>0?'#dc2626':'#059669', padding:'5px 9px' }}>
+                          {Number(row.divergencias)>0 ? `${row.divergencias} divergência(s)` : 'Conforme'}
+                        </span>
+                      </td>
+                      <td style={{ color:t.text, fontWeight:650, whiteSpace:'nowrap' }}>{row.valor||'—'}</td>
+                      <td>{renderActions(row)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="ui-mobile-list">
+              {visibleHistory.map(row => (
+                <article key={row.id} className="ui-mobile-card" style={{ border:`1px solid ${t.border}`, background:dark?'rgba(255,255,255,.018)':'#fff' }}>
+                  <div className="ui-mobile-head">
+                    <div>
+                      <div style={{ fontSize:13.5, fontWeight:700, color:t.text }}>{row.periodo||'Auditoria sem referência'}</div>
+                      <div style={{ fontSize:11, color:t.muted, marginTop:3 }}>{row.data}</div>
+                    </div>
+                    <span className="badge" style={{ background:Number(row.divergencias)>0?'#dc262616':'#05966916', color:Number(row.divergencias)>0?'#dc2626':'#059669' }}>
+                      {Number(row.divergencias)>0 ? row.divergencias : 'Conforme'}
+                    </span>
+                  </div>
+                  <div className="ui-mobile-meta">
+                    <div><div className="ui-mobile-label" style={{ color:t.muted }}>Arquivos</div><div className="ui-mobile-value" style={{ color:t.text }}>{row.arquivos||'—'}</div></div>
+                    <div><div className="ui-mobile-label" style={{ color:t.muted }}>Valor divergente</div><div className="ui-mobile-value" style={{ color:t.text, fontWeight:650 }}>{row.valor||'—'}</div></div>
+                    {isAdmin && <div><div className="ui-mobile-label" style={{ color:t.muted }}>Auditor</div><div className="ui-mobile-value" style={{ color:t.text }}>{row.userName||'—'}</div></div>}
+                  </div>
+                  {renderActions(row, true)}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {confirmDel && (
+        <Modal t={t} dark={dark} size="sm" danger title="Excluir auditoria?" subtitle="Esta ação remove o registro deste navegador."
+          onClose={() => setConfirmDel(null)}
+          footer={
+            <>
+              <Button t={t} dark={dark} variant="ghost" onClick={() => setConfirmDel(null)} style={{ flex:1 }}>Cancelar</Button>
+              <Button t={t} dark={dark} variant="danger" onClick={() => { onDelete(confirmDel.id); setConfirmDel(null); }} style={{ flex:1 }}>Excluir registro</Button>
+            </>
+          }>
+          <div style={{ fontSize:13, color:t.muted, lineHeight:1.6 }}>
+            <strong style={{ color:t.text }}>{confirmDel.periodo||confirmDel.data}</strong> será removida do histórico. Relatórios exportados anteriormente não serão afetados.
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 // ─── USER MANAGEMENT PAGE ─────────────────────────────────────────────────────
+const USER_MANAGEMENT_CSS = `
+.users-page{max-width:1120px;margin:0 auto}
+.users-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.users-summary-card{min-height:104px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;position:relative}
+.users-summary-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.users-summary-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.users-summary-value{font-family:inherit;font-size:22px;font-weight:700;line-height:1.1;letter-spacing:0}
+.users-summary-label{font-size:12px;font-weight:600;margin-top:9px}
+.users-summary-detail{font-size:11px;margin-top:3px}
+.users-panel{overflow:hidden}
+.users-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px}
+.users-search{flex:1;min-width:240px;max-width:440px}
+.users-filters{display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:1px}
+.users-filter{border-radius:8px;padding:8px 11px;border:1px solid transparent;background:transparent;font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap;transition:all .15s ease}
+.users-count{padding:10px 18px;font-size:11.5px}
+.users-table-wrap{overflow-x:auto}
+.users-table{width:100%;border-collapse:collapse;min-width:900px}
+.users-table th{padding:11px 16px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.users-table td{padding:14px 16px;vertical-align:middle}
+.users-table tbody tr{transition:background .15s ease,opacity .15s ease}
+.users-person{display:flex;align-items:center;gap:11px;min-width:180px}
+.users-avatar{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0}
+.users-name{font-size:13.5px;font-weight:650;line-height:1.3}
+.users-self{font-size:10px;color:#F47920;margin-top:2px;font-weight:600}
+.users-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;white-space:nowrap}
+.users-mobile-list{display:none;padding:12px}
+.users-mobile-card{padding:15px;border-radius:8px;margin-bottom:10px}
+.users-mobile-card:last-child{margin-bottom:0}
+.users-mobile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.users-mobile-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.users-mobile-meta-label{font-size:10.5px;margin-bottom:3px}
+.users-mobile-meta-value{font-size:12.5px;overflow-wrap:anywhere}
+.users-mobile-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.user-form-section+ .user-form-section{margin-top:24px;padding-top:22px;border-top:1px solid}
+.user-form-section-title{font-size:13px;font-weight:700;margin-bottom:4px}
+.user-form-section-copy{font-size:11.5px;line-height:1.5;margin-bottom:15px}
+.user-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.user-choice{display:flex;align-items:flex-start;gap:11px;width:100%;min-height:76px;padding:13px;border-radius:8px;border:1px solid;background:transparent;text-align:left;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.user-choice-mark{width:18px;height:18px;border:2px solid;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.user-choice-dot{width:8px;height:8px;border-radius:50%;background:#fff}
+.user-choice-title{font-size:12.5px;font-weight:700;line-height:1.3}
+.user-choice-copy{font-size:11px;line-height:1.45;margin-top:3px}
+.user-form-footer{display:grid;grid-template-columns:minmax(120px,1fr) minmax(180px,2fr);gap:10px;width:100%}
+.users-loading{padding:18px}
+.users-skeleton{height:58px;border-radius:10px;margin-bottom:8px;animation:usersPulse 1.2s ease-in-out infinite}
+.users-filter:focus-visible,.user-choice:focus-visible{outline:2px solid #F47920;outline-offset:2px}
+@keyframes usersPulse{0%,100%{opacity:.35}50%{opacity:.7}}
+@media(max-width:920px){.users-summary{grid-template-columns:1fr 1fr}.users-toolbar{align-items:stretch;flex-direction:column}.users-search{max-width:none}.users-filters{width:100%}}
+@media(max-width:860px){.users-summary{grid-template-columns:1fr 1fr;gap:10px}.users-summary-card{min-height:104px;padding:15px}.users-table-wrap{display:none}.users-mobile-list{display:block}.users-count{border-bottom:1px solid}.user-choice-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.users-summary{grid-template-columns:1fr}.users-mobile-meta{grid-template-columns:1fr}.users-mobile-actions{grid-template-columns:1fr}.user-form-footer{grid-template-columns:1fr}.users-toolbar{padding:14px}.users-filters{margin-right:-14px;padding-right:14px}}
+`;
+
 function UserManagementPage({ dark, t, currentUser }) {
   const [users,      setUsers]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -2198,10 +2833,16 @@ function UserManagementPage({ dark, t, currentUser }) {
   const [formError,  setFormError]  = useState('');
   const [saving,     setSaving]     = useState(false);
   const [aviso,      setAviso]      = useState('');
+  const [avisoTone,  setAvisoTone]  = useState('success');
   const [resetId,    setResetId]    = useState(null);
   const [resetDone,  setResetDone]  = useState(false);
   const [resetErr,   setResetErr]   = useState('');
+  const [resetSending, setResetSending] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [actionId,   setActionId]   = useState(null);
+  const [query,      setQuery]      = useState('');
+  const [filter,     setFilter]     = useState('all');
+  const [showPassword, setShowPassword] = useState(false);
 
   const refresh = async () => {
     try {
@@ -2209,8 +2850,9 @@ function UserManagementPage({ dark, t, currentUser }) {
       setLoadError('');
     } catch (err) {
       setLoadError(mensagemDeErro(err));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { refresh(); }, []);
@@ -2219,20 +2861,26 @@ function UserManagementPage({ dark, t, currentUser }) {
     setEditUser(null);
     setForm({ name:'', email:'', password:'', role:'user', cargo:'', modo:'convite' });
     setFormError('');
+    setShowPassword(false);
     setShowForm(true);
   };
 
   const openEdit = (u) => {
     setEditUser(u);
-    setForm({ name:u.name, email:u.email, password:'', role:u.role, cargo:u.cargo||'', modo:'convite' });
+    setForm({ name:u.name||'', email:u.email||'', password:'', role:u.role||'user', cargo:u.cargo||'', modo:'convite' });
     setFormError('');
+    setShowPassword(false);
     setShowForm(true);
   };
 
   const saveUser = async () => {
     setFormError('');
+    setAviso('');
     if (!form.name.trim())  { setFormError('Nome é obrigatório.'); return; }
     if (!form.email.trim()) { setFormError('E-mail é obrigatório.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setFormError('Informe um e-mail válido.'); return;
+    }
     if (!editUser && form.modo === 'temporaria' && form.password.length < 8) {
       setFormError('A senha temporária deve ter pelo menos 8 caracteres.'); return;
     }
@@ -2240,34 +2888,44 @@ function UserManagementPage({ dark, t, currentUser }) {
     try {
       if (editUser) {
         // O e-mail é a identidade no Firebase Auth e não é editável aqui.
-        await atualizarUsuario(editUser.id, { nome:form.name, cargo:form.cargo, role:form.role });
+        await atualizarUsuario(editUser.id, { nome:form.name.trim(), cargo:form.cargo.trim(), role:form.role });
         setAviso('Usuário atualizado.');
       } else {
         await criarUsuario({
-          nome: form.name, email: form.email, cargo: form.cargo, role: form.role,
+          nome: form.name.trim(), email: form.email.trim(), cargo: form.cargo.trim(), role: form.role,
           modo: form.modo, senhaTemporaria: form.password,
         }, currentUser.id);
         setAviso(form.modo === 'temporaria'
           ? 'Usuário criado. Ele deverá trocar a senha temporária no primeiro acesso.'
           : `Convite enviado para ${form.email.trim()}. O usuário define a própria senha pelo link.`);
       }
+      setAvisoTone('success');
       await refresh();
       setShowForm(false);
     } catch (err) {
       setFormError(mensagemDeErro(err));
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   // No plano Spark o cliente não exclui a conta de outro usuário no Auth.
   // Desativar corta o acesso pelas Security Rules, que é o efeito que importa.
   const toggleAtivo = async (u, desativar) => {
+    setAviso('');
+    setActionId(u.id);
     try {
       await definirUsuarioDesativado(u.id, desativar);
       setAviso(desativar ? `${u.name} foi desativado e perdeu o acesso.` : `${u.name} foi reativado.`);
+      setAvisoTone('success');
       await refresh();
-    } catch (err) { setAviso(mensagemDeErro(err)); }
-    setConfirmDel(null);
+    } catch (err) {
+      setAviso(mensagemDeErro(err));
+      setAvisoTone('error');
+    } finally {
+      setActionId(null);
+      setConfirmDel(null);
+    }
   };
 
   // O admin não define mais a senha de ninguém: dispara o e-mail de redefinição
@@ -2276,240 +2934,445 @@ function UserManagementPage({ dark, t, currentUser }) {
     const alvo = users.find(u => u.id === resetId);
     if (!alvo) return;
     setResetErr('');
+    setResetSending(true);
     try {
       await enviarResetDeSenha(alvo.email);
       setResetDone(true);
-      setTimeout(() => { setResetId(null); setResetDone(false); }, 2200);
-    } catch (err) { setResetErr(mensagemDeErro(err)); }
+    } catch (err) {
+      setResetErr(mensagemDeErro(err));
+    } finally {
+      setResetSending(false);
+    }
   };
 
   const roleColor = (r) => r==='admin'?'#F47920':'#2B4AA0';
+  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
+  const activeUsers = users.filter(u => !u.disabled);
+  const adminUsers = users.filter(u => u.role === 'admin');
+  const attentionUsers = users.filter(u => u.disabled || u.mustChangePassword);
+  const visibleUsers = users.filter((u) => {
+    const matchesQuery = !normalizedQuery || [u.name, u.email, u.cargo]
+      .some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery));
+    const matchesFilter = filter === 'all'
+      || (filter === 'active' && !u.disabled)
+      || (filter === 'admin' && u.role === 'admin')
+      || (filter === 'pending' && !u.disabled && u.mustChangePassword)
+      || (filter === 'disabled' && u.disabled);
+    return matchesQuery && matchesFilter;
+  }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+
+  const statusFor = (user) => user.disabled
+    ? { label:'Desativado', color:'#ef4444' }
+    : user.mustChangePassword
+      ? { label:'Senha pendente', color:'#d97706' }
+      : { label:'Ativo', color:'#059669' };
+  const displayName = (user) => user.name || user.email || 'Usuário';
+  const filterOptions = [
+    ['all', 'Todos'],
+    ['active', 'Ativos'],
+    ['admin', 'Administradores'],
+    ['pending', 'Senha pendente'],
+    ['disabled', 'Desativados'],
+  ];
+  const summaryCards = [
+    { label:'Contas cadastradas', value:users.length, detail:'Total de usuários no sistema', icon:ICONS.users, color:'#2563eb' },
+    { label:'Acessos ativos', value:activeUsers.length, detail:`${users.length-activeUsers.length} acesso(s) bloqueado(s)`, icon:ICONS.check, color:'#059669' },
+    { label:'Administradores', value:adminUsers.length, detail:'Acesso à gestão completa', icon:ICONS.settings, color:'#F47920' },
+    { label:'Requer atenção', value:attentionUsers.length, detail:'Senha pendente ou conta desativada', icon:ICONS.warning, color:'#dc2626' },
+  ];
+
+  const openReset = (user) => {
+    setResetId(user.id);
+    setResetDone(false);
+    setResetErr('');
+  };
+
+  const closeForm = () => {
+    if (saving) return;
+    setShowForm(false);
+    setFormError('');
+  };
+
+  const closeReset = () => {
+    if (resetSending) return;
+    setResetId(null);
+    setResetDone(false);
+    setResetErr('');
+  };
+
+  const renderStatus = (user) => {
+    const status = statusFor(user);
+    return (
+      <span className="badge" style={{ background:`${status.color}16`, color:status.color, gap:6, padding:'5px 9px' }}>
+        <span aria-hidden="true" style={{ width:6, height:6, borderRadius:'50%', background:status.color }} />
+        {status.label}
+      </span>
+    );
+  };
+
+  const renderRole = (user) => (
+    <span className="badge" style={{ background:`${roleColor(user.role)}14`, color:roleColor(user.role), padding:'5px 9px' }}>
+      {user.role === 'admin' ? 'Administrador' : 'Usuário'}
+    </span>
+  );
+
+  const renderActions = (user, mobile = false) => {
+    const busy = actionId === user.id;
+    const buttonStyle = { justifyContent:'center', padding:'7px 10px', fontSize:11.5 };
+    return (
+      <div className={mobile ? 'users-mobile-actions' : 'users-actions'}>
+        <Button t={t} dark={dark} variant="subtle" size="sm" disabled={!!actionId}
+          onClick={() => openEdit(user)} style={buttonStyle}>
+          {ICONS.edit} {mobile ? 'Editar usuário' : 'Editar'}
+        </Button>
+        <Button t={t} dark={dark} variant="subtle" size="sm" disabled={!!actionId}
+          onClick={() => openReset(user)} style={buttonStyle}>
+          {mobile ? 'Redefinir senha' : 'Senha'}
+        </Button>
+        {user.id !== currentUser.id && (user.disabled ? (
+          <Button t={t} dark={dark} variant="ghost" size="sm" disabled={!!actionId}
+            onClick={() => toggleAtivo(user, false)} style={{ ...buttonStyle, color:'#059669', borderColor:'#05966940' }}>
+            {busy ? 'Reativando...' : 'Reativar'}
+          </Button>
+        ) : (
+          <Button t={t} dark={dark} variant="ghost" size="sm" disabled={!!actionId}
+            onClick={() => setConfirmDel(user)} style={{ ...buttonStyle, color:'#dc2626', borderColor:'#dc262640' }}>
+            {ICONS.x} Desativar
+          </Button>
+        ))}
+      </div>
+    );
+  };
 
   return (
-    <div className="fade-in" style={{ maxWidth:820, margin:'0 auto' }}>
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:28, flexWrap:'wrap', gap:16 }}>
-        <div>
-          <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:'-.03em', marginBottom:4 }}>Gestão de Usuários</h1>
-          <p style={{ fontSize:13, color:t.muted }}>Cadastre e gerencie os acessos ao sistema.</p>
-        </div>
-        <button className="btn-primary" onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:8, background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:10, padding:'10px 20px', fontSize:13, fontWeight:600, cursor:'pointer', boxShadow:'0 4px 14px rgba(244,121,32,.35)' }}>
-          {ICONS.plus} Novo Usuário
-        </button>
-      </div>
+    <div className="users-page fade-in">
+      <style>{USER_MANAGEMENT_CSS}</style>
+      <PageHeader t={t} title="Usuários e acessos" subtitle="Gerencie contas, perfis e disponibilidade de acesso ao sistema."
+        right={<Button t={t} dark={dark} onClick={openCreate}>{ICONS.plus} Novo Usuário</Button>} />
 
-      {aviso && (
-        <div style={{ background:'#10b98115', border:'1px solid #10b98140', borderRadius:10, padding:'12px 16px', fontSize:12.5, color:'#10b981', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-          <span>{aviso}</span>
-          <button onClick={() => setAviso('')} style={{ background:'none', border:'none', color:'#10b981', cursor:'pointer', display:'flex' }}>{ICONS.x}</button>
-        </div>
-      )}
+      {aviso && <Alert tone={avisoTone} onClose={() => setAviso('')} style={{ marginBottom:16 }}>{aviso}</Alert>}
       {loadError && (
-        <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:10, padding:'12px 16px', fontSize:12.5, color:'#ef4444', marginBottom:16 }}>{loadError}</div>
+        <Alert tone="error" style={{ marginBottom:16 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <span style={{ flex:'1 1 260px' }}>{loadError}</span>
+            <Button t={t} dark={dark} variant="ghost" size="sm"
+              onClick={() => { setLoading(true); setLoadError(''); refresh(); }}
+              style={{ color:'#ef4444', borderColor:'#ef444450' }}>
+              Tentar novamente
+            </Button>
+          </div>
+        </Alert>
       )}
 
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, overflow:'hidden' }}>
-        {loading ? (
-          <div style={{ padding:'40px 0', textAlign:'center', fontSize:13, color:t.muted }}>Carregando usuários…</div>
-        ) : users.length===0 ? (
-          <EmptyState t={t} mensagem="Nenhum usuário cadastrado." sub="Clique em Novo Usuário para começar." />
-        ) : (
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead>
-                <tr style={{ background:dark?'#0f172a':'#f8fafc' }}>
-                  {['Nome','E-mail','Cargo','Perfil','Status','Criado em','Ações'].map(h => (
-                    <th key={h} style={{ padding:'12px 20px', textAlign:'left', fontSize:11, fontWeight:600, color:t.muted, letterSpacing:'.05em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} className="table-row" style={{ borderTop:`1px solid ${t.border}`, opacity:u.disabled?0.55:1 }}>
-                    <td style={{ padding:'14px 20px' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:u.disabled?'#475569':'linear-gradient(135deg,#F47920,#1A2B6B)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:13, flexShrink:0 }}>
-                          {u.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize:13.5, fontWeight:600, color:t.text }}>{u.name}</div>
-                          {u.id===currentUser.id && <div style={{ fontSize:10, color:'#F47920', marginTop:1 }}>você</div>}
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ padding:'14px 20px', fontSize:13, color:t.muted }}>{u.email}</td>
-                    <td style={{ padding:'14px 20px', fontSize:13, color:t.text }}>{u.cargo||'—'}</td>
-                    <td style={{ padding:'14px 20px' }}>
-                      <span className="badge" style={{ background:`${roleColor(u.role)}18`, color:roleColor(u.role) }}>
-                        {u.role==='admin'?'Administrador':'Usuário'}
-                      </span>
-                    </td>
-                    <td style={{ padding:'14px 20px' }}>
-                      {u.disabled ? (
-                        <span className="badge" style={{ background:'#ef444418', color:'#ef4444' }}>Desativado</span>
-                      ) : u.mustChangePassword ? (
-                        <span className="badge" style={{ background:'#f59e0b18', color:'#f59e0b' }}>Senha pendente</span>
-                      ) : (
-                        <span className="badge" style={{ background:'#10b98118', color:'#10b981' }}>Ativo</span>
-                      )}
-                    </td>
-                    <td style={{ padding:'14px 20px', fontSize:12, color:t.muted }}>{formatarData(u.createdAt)}</td>
-                    <td style={{ padding:'14px 20px' }}>
-                      <div style={{ display:'flex', gap:6 }}>
-                        <button className="btn-sm" title="Editar" onClick={() => openEdit(u)} style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:7, border:`1px solid ${t.border}`, background:'none', color:'#F47920', fontSize:12, cursor:'pointer' }}>
-                          {ICONS.edit}<span>Editar</span>
-                        </button>
-                        <button className="btn-sm" title="Enviar link de redefinição de senha" onClick={() => { setResetId(u.id); setResetDone(false); setResetErr(''); }} style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:7, border:`1px solid ${t.border}`, background:'none', color:t.muted, fontSize:12, cursor:'pointer' }}>
-                          🔑
-                        </button>
-                        {u.id !== currentUser.id && (
-                          u.disabled ? (
-                            <button className="btn-sm" title="Reativar acesso" onClick={() => toggleAtivo(u, false)} style={{ display:'flex', alignItems:'center', padding:'6px 12px', borderRadius:7, border:'1px solid #10b98130', background:'none', color:'#10b981', fontSize:12, cursor:'pointer' }}>
-                              Reativar
-                            </button>
-                          ) : (
-                            <button className="btn-sm" title="Desativar acesso" onClick={() => setConfirmDel(u)} style={{ display:'flex', alignItems:'center', padding:'6px 12px', borderRadius:7, border:'1px solid #ef444430', background:'none', color:'#ef4444', fontSize:12, cursor:'pointer' }}>
-                              {ICONS.x}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="users-summary" aria-label="Resumo de usuários">
+        {summaryCards.map(card => (
+          <div key={card.label} className="users-summary-card" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="users-summary-top">
+              <div className="users-summary-icon" style={{ color:card.color, background:`${card.color}14` }}>{card.icon}</div>
+              <div className="users-summary-value" style={{ color:t.text }}>{loading ? '–' : card.value}</div>
+            </div>
+            <div>
+              <div className="users-summary-label" style={{ color:t.text }}>{card.label}</div>
+              <div className="users-summary-detail" style={{ color:t.muted }}>{card.detail}</div>
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Create / Edit modal */}
-      {showForm && (
-        <>
-          <style>{`
-            .user-modal-wrap{position:fixed;inset:0;z-index:150;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:none}
-            .user-modal{width:min(680px,94vw);max-height:100%;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.45);animation:fadeIn .2s ease;pointer-events:auto}
-            .user-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
-            .user-form-grid .full{grid-column:1/-1}
-            @media(max-width:600px){.user-form-grid{grid-template-columns:1fr}.user-form-grid .full{grid-column:auto}}
-          `}</style>
-          <div className="drawer-overlay" onClick={() => setShowForm(false)} />
-          <div className="user-modal-wrap">
-          <div className="user-modal" style={{ ...t.card, border:`1px solid ${t.border}` }}>
-            <div style={{ padding:'14px 20px', borderBottom:`1px solid ${t.border}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:t.text }}>{editUser?'Editar Usuário':'Novo Usuário'}</div>
-              <button onClick={() => setShowForm(false)} style={{ background:'none', border:'none', color:t.muted, cursor:'pointer', display:'flex', padding:4 }}>{ICONS.x}</button>
-            </div>
-            <div style={{ padding:20, overflowY:'auto', minHeight:0 }}>
-              {formError && <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'9px 14px', fontSize:12, color:'#ef4444', marginBottom:14 }}>{formError}</div>}
-              <div className="user-form-grid">
-                {[
-                  { key:'name',  label:'Nome completo', type:'text',  ph:'João Silva' },
-                  { key:'email', label:'E-mail',        type:'email', ph:'joao@consaude.com.br', readOnly:!!editUser },
-                ].map(({ key, label, type, ph, readOnly }) => (
-                  <div key={key}>
-                    <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:5 }}>{label}</label>
-                    <input type={type} value={form[key]} readOnly={readOnly} placeholder={ph}
-                      onChange={e => setForm(p=>({...p,[key]:e.target.value}))}
-                      title={readOnly?'O e-mail identifica a conta no Firebase e não pode ser alterado aqui.':undefined}
-                      style={{ width:'100%', padding:'9px 13px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#080e18':'#f8fafc', color:readOnly?t.muted:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif", cursor:readOnly?'not-allowed':'auto' }} />
-                  </div>
-                ))}
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:5 }}>Cargo / Função</label>
-                  <input type="text" value={form.cargo} placeholder="Ex: Analista de Faturamento"
-                    onChange={e => setForm(p=>({...p,cargo:e.target.value}))}
-                    style={{ width:'100%', padding:'9px 13px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#080e18':'#f8fafc', color:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
-                </div>
-                <div>
-                  <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:5 }}>Perfil de acesso</label>
-                  <div style={{ display:'flex', gap:8 }}>
-                    {[['user','Usuário'],['admin','Administrador']].map(([v,l]) => (
-                      <button key={v} type="button" onClick={() => setForm(p=>({...p,role:v}))} style={{ flex:1, padding:'9px 4px', borderRadius:10, border:`2px solid ${form.role===v?'#F47920':t.border}`, background:form.role===v?'#F4792018':'transparent', color:form.role===v?'#F47920':t.muted, fontSize:12.5, fontWeight:600, cursor:'pointer', transition:'all .15s' }}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {!editUser && (
-                  <div className="full">
-                    <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:6 }}>Definição da senha</label>
-                    <div className="user-form-grid">
-                      {[
-                        ['convite',    'Convite por e-mail',  'O usuário cria a própria senha por link.'],
-                        ['temporaria', 'Senha temporária',    'Troca obrigatória no 1º acesso.'],
-                      ].map(([v, titulo, desc]) => (
-                        <button key={v} type="button" onClick={() => setForm(p=>({...p,modo:v}))}
-                          style={{ textAlign:'left', padding:'10px 13px', borderRadius:10, border:`2px solid ${form.modo===v?'#F47920':t.border}`, background:form.modo===v?'#F4792010':'transparent', cursor:'pointer', transition:'all .15s' }}>
-                          <div style={{ fontSize:13, fontWeight:600, color:form.modo===v?'#F47920':t.text, marginBottom:2 }}>{titulo}</div>
-                          <div style={{ fontSize:11.5, color:t.muted, lineHeight:1.4 }}>{desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!editUser && form.modo==='temporaria' && (
-                  <div className="full">
-                    <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:5 }}>Senha temporária</label>
-                    <input type="text" value={form.password} placeholder="Mínimo 8 caracteres"
-                      onChange={e => setForm(p=>({...p,password:e.target.value}))}
-                      style={{ width:'100%', padding:'9px 13px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#080e18':'#f8fafc', color:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
-                    <div style={{ fontSize:11, color:t.muted, marginTop:4 }}>Entregue por um canal seguro. Será obrigatoriamente trocada no primeiro acesso.</div>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:10, padding:'14px 20px', borderTop:`1px solid ${t.border}`, flexShrink:0 }}>
-              <button onClick={() => setShowForm(false)} style={{ flex:1, padding:'10px', border:`1px solid ${t.border}`, borderRadius:10, background:'none', color:t.muted, fontSize:13, cursor:'pointer' }}>Cancelar</button>
-              <button onClick={saveUser} disabled={saving} style={{ flex:2, padding:'10px', background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer' }}>
-                {saving?'Salvando…':editUser?'Salvar alterações':'Criar usuário'}
+      <section className="users-panel" style={{ ...t.card, borderRadius:RADIUS.lg, border:`1px solid ${t.border}` }} aria-label="Lista de usuários">
+        <div className="users-toolbar" style={{ borderBottom:`1px solid ${t.border}` }}>
+          <div className="users-search" style={{ position:'relative' }}>
+            <span aria-hidden="true" style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', color:t.muted, display:'flex', pointerEvents:'none' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <TextInput t={t} dark={dark} value={query} aria-label="Buscar usuários"
+              placeholder="Buscar por nome, e-mail ou cargo"
+              onChange={event => setQuery(event.target.value)}
+              style={{ paddingLeft:39, paddingRight:query?40:14 }} />
+            {query && (
+              <button type="button" className="cs-icon-btn" aria-label="Limpar busca" onClick={() => setQuery('')}
+                style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color:t.muted, width:28, height:28 }}>
+                {ICONS.x}
               </button>
-            </div>
-          </div>
-          </div>
-        </>
-      )}
-
-      {/* Reset password overlay */}
-      {resetId && (
-        <>
-          <div className="drawer-overlay" onClick={() => setResetId(null)} />
-          <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:150, ...t.card, border:`1px solid ${t.border}`, borderRadius:16, padding:28, width:360, maxWidth:'90vw', boxShadow:'0 20px 60px rgba(0,0,0,.4)' }}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:t.text, marginBottom:6 }}>Redefinir Senha</h3>
-            {resetDone ? (
-              <div style={{ textAlign:'center', color:'#10b981', padding:'12px 0', fontSize:13, fontWeight:600 }}>✓ Link enviado por e-mail!</div>
-            ) : (
-              <>
-                <p style={{ fontSize:12.5, color:t.muted, marginBottom:16, lineHeight:1.6 }}>
-                  Um link seguro será enviado para <strong style={{ color:t.text }}>{users.find(u=>u.id===resetId)?.email}</strong>.
-                  O próprio usuário escolhe a nova senha — você não precisa conhecê-la.
-                </p>
-                {resetErr && <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444', marginBottom:14 }}>{resetErr}</div>}
-                <div style={{ display:'flex', gap:10 }}>
-                  <button onClick={() => setResetId(null)} style={{ flex:1, padding:'10px', border:`1px solid ${t.border}`, borderRadius:9, background:'none', color:t.muted, fontSize:13, cursor:'pointer' }}>Cancelar</button>
-                  <button onClick={doReset} style={{ flex:1, padding:'10px', background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer' }}>Enviar link</button>
-                </div>
-              </>
             )}
           </div>
-        </>
+          <div className="users-filters" aria-label="Filtrar usuários">
+            {filterOptions.map(([value, label]) => {
+              const selected = filter === value;
+              return (
+                <button key={value} type="button" className="users-filter" aria-pressed={selected}
+                  onClick={() => setFilter(value)}
+                  style={{ borderColor:selected?'#F4792060':t.border, background:selected?'#F4792014':'transparent', color:selected?'#F47920':t.muted }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {!loading && users.length > 0 && (
+          <div className="users-count" style={{ color:t.muted, background:dark?'rgba(255,255,255,.015)':'rgba(15,23,42,.018)' }}>
+            Exibindo <strong style={{ color:t.text }}>{visibleUsers.length}</strong> de {users.length} usuário(s)
+          </div>
+        )}
+
+        {loading ? (
+          <div className="users-loading" aria-label="Carregando usuários">
+            {[1,2,3].map(item => <div key={item} className="users-skeleton" style={{ background:dark?'#1e293b':'#e2e8f0' }} />)}
+          </div>
+        ) : loadError && users.length===0 ? (
+          <div style={{ padding:'44px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:14, fontWeight:700, color:t.text }}>Lista temporariamente indisponível</div>
+            <div style={{ fontSize:12, color:t.muted, marginTop:5 }}>Use “Tentar novamente” para recarregar os usuários.</div>
+          </div>
+        ) : users.length===0 ? (
+          <EmptyState t={t} mensagem="Nenhum usuário cadastrado." sub="Clique em Novo Usuário para começar." />
+        ) : visibleUsers.length===0 ? (
+          <div style={{ padding:'44px 20px', textAlign:'center' }}>
+            <div style={{ width:42, height:42, margin:'0 auto 12px', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', color:t.muted, background:dark?'rgba(255,255,255,.05)':'#f1f5f9' }}>{ICONS.users}</div>
+            <div style={{ fontSize:14, fontWeight:700, color:t.text }}>Nenhum usuário encontrado</div>
+            <div style={{ fontSize:12, color:t.muted, margin:'5px 0 16px' }}>Ajuste a busca ou escolha outro filtro.</div>
+            <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => { setQuery(''); setFilter('all'); }}>Limpar filtros</Button>
+          </div>
+        ) : (
+          <>
+            <div className="users-table-wrap">
+              <table className="users-table">
+                <thead style={{ background:dark?'#0f172a':'#f8fafc' }}>
+                  <tr>
+                    {['Usuário','E-mail','Cargo','Perfil','Status','Criado em'].map(label => <th key={label} style={{ color:t.muted }}>{label}</th>)}
+                    <th style={{ color:t.muted, textAlign:'right' }}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleUsers.map(user => (
+                    <tr key={user.id} className="table-row" style={{ borderTop:`1px solid ${t.border}`, opacity:user.disabled ? 0.72 : 1 }}>
+                      <td>
+                        <div className="users-person">
+                          <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}>{displayName(user).charAt(0).toUpperCase()}</div>
+                          <div>
+                            <div className="users-name" style={{ color:t.text }}>{displayName(user)}</div>
+                            {user.id===currentUser.id && <div className="users-self">Sua conta</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ fontSize:12.5, color:t.muted, overflowWrap:'anywhere' }}>{user.email||'—'}</td>
+                      <td style={{ fontSize:12.5, color:t.text }}>{user.cargo||'—'}</td>
+                      <td>{renderRole(user)}</td>
+                      <td>{renderStatus(user)}</td>
+                      <td style={{ fontSize:12, color:t.muted, whiteSpace:'nowrap' }}>{formatarData(user.createdAt)}</td>
+                      <td>{renderActions(user)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="users-mobile-list">
+              {visibleUsers.map(user => (
+                <article key={user.id} className="users-mobile-card" style={{ border:`1px solid ${t.border}`, background:dark?'rgba(255,255,255,.018)':'#fff', opacity:user.disabled ? 0.76 : 1 }}>
+                  <div className="users-mobile-head">
+                    <div className="users-person">
+                      <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}>{displayName(user).charAt(0).toUpperCase()}</div>
+                      <div>
+                        <div className="users-name" style={{ color:t.text }}>{displayName(user)}</div>
+                        <div style={{ fontSize:11.5, color:t.muted, marginTop:2, overflowWrap:'anywhere' }}>{user.email||'—'}</div>
+                        {user.id===currentUser.id && <div className="users-self">Sua conta</div>}
+                      </div>
+                    </div>
+                    {renderStatus(user)}
+                  </div>
+                  <div className="users-mobile-meta">
+                    <div>
+                      <div className="users-mobile-meta-label" style={{ color:t.muted }}>Cargo</div>
+                      <div className="users-mobile-meta-value" style={{ color:t.text }}>{user.cargo||'—'}</div>
+                    </div>
+                    <div>
+                      <div className="users-mobile-meta-label" style={{ color:t.muted }}>Perfil</div>
+                      <div className="users-mobile-meta-value">{renderRole(user)}</div>
+                    </div>
+                    <div>
+                      <div className="users-mobile-meta-label" style={{ color:t.muted }}>Criado em</div>
+                      <div className="users-mobile-meta-value" style={{ color:t.text }}>{formatarData(user.createdAt)}</div>
+                    </div>
+                  </div>
+                  {renderActions(user, true)}
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {showForm && (
+        <Modal
+          t={t} dark={dark} size="lg"
+          title={editUser ? "Editar usuário" : "Criar novo usuário"}
+          subtitle={editUser ? `Atualize os dados e permissões de ${displayName(editUser)}.` : "Configure a conta, as permissões e a forma de primeiro acesso."}
+          onClose={closeForm}
+          footer={
+            <div className="user-form-footer">
+              <Button t={t} dark={dark} type="button" variant="ghost" onClick={closeForm} disabled={saving}>Cancelar</Button>
+              <Button t={t} dark={dark} type="submit" form="user-account-form" disabled={saving} aria-busy={saving}>
+                {saving ? <><span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> Salvando...</> : editUser ? "Salvar alterações" : "Criar usuário"}
+              </Button>
+            </div>
+          }
+        >
+          <form id="user-account-form" onSubmit={(event) => { event.preventDefault(); saveUser(); }} noValidate>
+            {formError && <Alert tone="error" style={{ marginBottom:20 }}>{formError}</Alert>}
+
+            <section className="user-form-section">
+              <div className="user-form-section-title" style={{ color:t.text }}>Dados da conta</div>
+              <div className="user-form-section-copy" style={{ color:t.muted }}>Informações usadas para identificar o usuário no sistema.</div>
+              <div className="cs-grid-2">
+                <Field t={t} htmlFor="user-name" label="Nome completo">
+                  <TextInput id="user-name" t={t} dark={dark} value={form.name} placeholder="João Silva" data-modal-autofocus="true"
+                    autoComplete="name" required disabled={saving}
+                    onChange={event => setForm(current => ({ ...current, name:event.target.value }))} />
+                </Field>
+                <Field t={t} htmlFor="user-email" label="E-mail"
+                  hint={editUser ? "O e-mail identifica a conta e não pode ser alterado." : "O convite ou a redefinição de senha será enviado para este endereço."}>
+                  <TextInput id="user-email" t={t} dark={dark} type="email" value={form.email}
+                    readOnly={!!editUser} placeholder="joao@consaude.com.br" autoComplete="email" required disabled={saving}
+                    onChange={event => setForm(current => ({ ...current, email:event.target.value }))} />
+                </Field>
+                <Field t={t} htmlFor="user-role" label="Cargo / Função" style={{ gridColumn:'1/-1' }}>
+                  <TextInput id="user-role" t={t} dark={dark} value={form.cargo} placeholder="Ex: Analista de Faturamento"
+                    autoComplete="organization-title" disabled={saving}
+                    onChange={event => setForm(current => ({ ...current, cargo:event.target.value }))} />
+                </Field>
+              </div>
+            </section>
+
+            <section className="user-form-section" style={{ borderColor:t.border }}>
+              <div className="user-form-section-title" style={{ color:t.text }}>Perfil de acesso</div>
+              <div className="user-form-section-copy" style={{ color:t.muted }}>Defina quais áreas e registros esta conta poderá acessar.</div>
+              <div className="user-choice-grid" role="radiogroup" aria-label="Perfil de acesso">
+                {[
+                  ['user', 'Usuário', 'Executa auditorias e consulta os próprios registros.'],
+                  ['admin', 'Administrador', 'Gerencia usuários e visualiza todos os registros.'],
+                ].map(([value, label, copy]) => {
+                  const selected = form.role === value;
+                  return (
+                    <button key={value} type="button" role="radio" aria-checked={selected} className="user-choice"
+                      disabled={saving} onClick={() => setForm(current => ({ ...current, role:value }))}
+                      style={{ borderColor:selected?BRAND.orange:t.border, background:selected?'#F4792010':'transparent' }}>
+                      <span className="user-choice-mark" style={{ borderColor:selected?BRAND.orange:t.muted, background:selected?BRAND.orange:'transparent' }}>
+                        {selected && <span className="user-choice-dot" />}
+                      </span>
+                      <span>
+                        <span className="user-choice-title" style={{ color:selected?BRAND.orange:t.text }}>{label}</span>
+                        <span className="user-choice-copy" style={{ color:t.muted, display:'block' }}>{copy}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {form.role === 'admin' && (
+                <Alert tone="warn" style={{ marginTop:12 }}>Administradores podem alterar acessos e consultar dados de todos os usuários.</Alert>
+              )}
+            </section>
+
+            {!editUser && (
+              <section className="user-form-section" style={{ borderColor:t.border }}>
+                <div className="user-form-section-title" style={{ color:t.text }}>Primeiro acesso</div>
+                <div className="user-form-section-copy" style={{ color:t.muted }}>Escolha como o usuário definirá a senha inicial.</div>
+                <div className="user-choice-grid" role="radiogroup" aria-label="Forma de primeiro acesso">
+                  {[
+                    ['convite', 'Convite por e-mail', 'O usuário recebe um link e cria a própria senha.'],
+                    ['temporaria', 'Senha temporária', 'Você define uma senha que será trocada no primeiro acesso.'],
+                  ].map(([value, label, copy]) => {
+                    const selected = form.modo === value;
+                    return (
+                      <button key={value} type="button" role="radio" aria-checked={selected} className="user-choice"
+                        disabled={saving} onClick={() => setForm(current => ({ ...current, modo:value }))}
+                        style={{ borderColor:selected?BRAND.orange:t.border, background:selected?'#F4792010':'transparent' }}>
+                        <span className="user-choice-mark" style={{ borderColor:selected?BRAND.orange:t.muted, background:selected?BRAND.orange:'transparent' }}>
+                          {selected && <span className="user-choice-dot" />}
+                        </span>
+                        <span>
+                          <span className="user-choice-title" style={{ color:selected?BRAND.orange:t.text }}>{label}</span>
+                          <span className="user-choice-copy" style={{ color:t.muted, display:'block' }}>{copy}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {form.modo === 'temporaria' && (
+                  <Field t={t} htmlFor="temporary-password" label="Senha temporária" style={{ marginTop:16 }}
+                    hint="Use ao menos 8 caracteres e envie a senha por um canal seguro.">
+                    <TextInput id="temporary-password" t={t} dark={dark} type={showPassword?'text':'password'}
+                      value={form.password} placeholder="Mínimo de 8 caracteres" autoComplete="new-password" minLength={8} required disabled={saving}
+                      onChange={event => setForm(current => ({ ...current, password:event.target.value }))} />
+                    <label style={{ display:'inline-flex', alignItems:'center', gap:8, marginTop:9, fontSize:11.5, color:t.muted, cursor:'pointer' }}>
+                      <input type="checkbox" checked={showPassword} onChange={event => setShowPassword(event.target.checked)} disabled={saving} />
+                      Mostrar senha
+                    </label>
+                  </Field>
+                )}
+              </section>
+            )}
+          </form>
+        </Modal>
       )}
 
-      {/* Delete confirmation overlay */}
+      {resetId && (
+        <Modal
+          t={t} dark={dark} size="sm" title={resetDone ? "Link enviado" : "Redefinir senha"}
+          subtitle={resetDone ? "A solicitação foi processada com sucesso." : "O usuário definirá uma nova senha por um link seguro."}
+          onClose={closeReset}
+          footer={resetDone ? (
+            <Button t={t} dark={dark} fullWidth onClick={closeReset}>Concluir</Button>
+          ) : (
+            <div className="user-form-footer">
+              <Button t={t} dark={dark} variant="ghost" onClick={closeReset} disabled={resetSending}>Cancelar</Button>
+              <Button t={t} dark={dark} onClick={doReset} disabled={resetSending} aria-busy={resetSending}>
+                {resetSending ? <><span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> Enviando...</> : 'Enviar link'}
+              </Button>
+            </div>
+          )}
+        >
+          {resetDone ? (
+            <Alert tone="success">
+              Enviamos as instruções para <strong>{users.find(user => user.id===resetId)?.email}</strong>.
+            </Alert>
+          ) : (
+            <>
+              <div style={{ padding:14, border:`1px solid ${t.border}`, borderRadius:RADIUS.md, background:dark?'rgba(255,255,255,.025)':'#f8fafc' }}>
+                <div style={{ fontSize:11, color:t.muted, marginBottom:4 }}>Destinatário</div>
+                <div style={{ fontSize:13, fontWeight:650, color:t.text, overflowWrap:'anywhere' }}>{users.find(user => user.id===resetId)?.email}</div>
+              </div>
+              {resetErr && <Alert tone="error" style={{ marginTop:14 }}>{resetErr}</Alert>}
+            </>
+          )}
+        </Modal>
+      )}
+
       {confirmDel && (
-        <>
-          <div className="drawer-overlay" onClick={() => setConfirmDel(null)} />
-          <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:150, ...t.card, border:'1px solid #ef444440', borderRadius:16, padding:28, width:360, maxWidth:'90vw', boxShadow:'0 20px 60px rgba(0,0,0,.4)' }}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:t.text, marginBottom:8 }}>Desativar usuário?</h3>
-            <p style={{ fontSize:13, color:t.muted, marginBottom:20, lineHeight:1.55 }}>
-              <strong style={{ color:t.text }}>{confirmDel.name}</strong> perde o acesso ao sistema imediatamente, mesmo com a senha correta.
-              O histórico de auditorias é preservado e você pode reativar a conta depois.
-            </p>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setConfirmDel(null)} style={{ flex:1, padding:'10px', border:`1px solid ${t.border}`, borderRadius:9, background:'none', color:t.muted, fontSize:13, cursor:'pointer' }}>Cancelar</button>
-              <button onClick={() => toggleAtivo(confirmDel, true)} style={{ flex:1, padding:'10px', background:'#ef4444', color:'white', border:'none', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer' }}>Desativar</button>
+        <Modal
+          t={t} dark={dark} size="sm" danger title="Desativar usuário?"
+          subtitle="Esta ação bloqueia o acesso imediatamente."
+          onClose={() => { if (!actionId) setConfirmDel(null); }}
+          footer={
+            <div className="user-form-footer">
+              <Button t={t} dark={dark} variant="ghost" onClick={() => setConfirmDel(null)} disabled={!!actionId}>Cancelar</Button>
+              <Button t={t} dark={dark} variant="danger" onClick={() => toggleAtivo(confirmDel, true)} disabled={!!actionId} aria-busy={!!actionId}>
+                {actionId ? 'Desativando...' : 'Desativar acesso'}
+              </Button>
+            </div>
+          }
+        >
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+            <div className="users-avatar" style={{ background:'#dc2626' }}>{displayName(confirmDel).charAt(0).toUpperCase()}</div>
+            <div>
+              <div style={{ fontSize:13.5, fontWeight:700, color:t.text }}>{displayName(confirmDel)}</div>
+              <div style={{ fontSize:11.5, color:t.muted, marginTop:2, overflowWrap:'anywhere' }}>{confirmDel.email}</div>
             </div>
           </div>
-        </>
+          <Alert tone="warn">As auditorias e o histórico desta conta serão preservados. O acesso poderá ser reativado depois.</Alert>
+        </Modal>
       )}
     </div>
   );
@@ -2523,24 +3386,39 @@ function ProfilePage({ dark, t, currentUser, onUpdateUser }) {
   const [pwdErr,   setPwdErr]   = useState('');
   const [pwdSaved, setPwdSaved] = useState(false);
   const [saving,   setSaving]   = useState(false);
-
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
   const [profErr, setProfErr] = useState('');
 
-  const saveProfile = async () => {
-    if (!form.name.trim()) return;
+  const saveProfile = async (event) => {
+    event?.preventDefault();
     setProfErr('');
+    setSaved(false);
+    if (!form.name.trim()) {
+      setProfErr('Informe seu nome completo.');
+      return;
+    }
+    setProfileSaving(true);
     try {
       // As Security Rules permitem que o usuário altere apenas nome e cargo do
       // próprio documento — nunca o papel nem o status de ativação.
-      await atualizarUsuario(currentUser.id, { nome:form.name, cargo:form.cargo, role:currentUser.role });
-      onUpdateUser({ ...currentUser, name:form.name.trim(), cargo:form.cargo.trim() });
+      const normalized = { name:form.name.trim(), cargo:form.cargo.trim() };
+      await atualizarUsuario(currentUser.id, { nome:normalized.name, cargo:normalized.cargo, role:currentUser.role });
+      setForm(normalized);
+      onUpdateUser({ ...currentUser, ...normalized });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (err) { setProfErr(mensagemDeErro(err)); }
+    } catch (err) {
+      setProfErr(mensagemDeErro(err));
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
-  const savePwd = async () => {
+  const savePwd = async (event) => {
+    event?.preventDefault();
     setPwdErr('');
+    setPwdSaved(false);
     if (!pwdForm.current)                   { setPwdErr('Informe a senha atual.'); return; }
     if (pwdForm.newPwd.length < 8)          { setPwdErr('A nova senha deve ter pelo menos 8 caracteres.'); return; }
     if (pwdForm.newPwd !== pwdForm.confirm) { setPwdErr('As senhas não coincidem.'); return; }
@@ -2551,88 +3429,105 @@ function ProfilePage({ dark, t, currentUser, onUpdateUser }) {
       setPwdForm({ current:'', newPwd:'', confirm:'' });
       setPwdSaved(true);
       setTimeout(() => setPwdSaved(false), 2500);
-    } catch (err) { setPwdErr(mensagemDeErro(err)); }
-    setSaving(false);
+    } catch (err) {
+      setPwdErr(mensagemDeErro(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="fade-in" style={{ maxWidth:560, margin:'0 auto' }}>
-      <div style={{ marginBottom:28 }}>
-        <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:'-.03em', marginBottom:4 }}>Meu Perfil</h1>
-        <p style={{ fontSize:13, color:t.muted }}>Gerencie suas informações pessoais.</p>
-      </div>
+    <div className="app-page-medium fade-in">
+      <PageHeader t={t} title="Meu perfil" subtitle="Atualize seus dados pessoais e as credenciais da conta." />
 
-      {/* Avatar card */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, padding:24, marginBottom:20, display:'flex', alignItems:'center', gap:18 }}>
-        <div style={{ width:64, height:64, borderRadius:'50%', background:'linear-gradient(135deg,#F47920,#1A2B6B)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:26, flexShrink:0 }}>
-          {currentUser.name.charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <div style={{ fontSize:18, fontWeight:700, color:t.text }}>{currentUser.name}</div>
-          <div style={{ fontSize:13, color:t.muted, marginTop:2 }}>{currentUser.email}</div>
-          <span className="badge" style={{ background:currentUser.role==='admin'?'#F4792018':'#2B4AA018', color:currentUser.role==='admin'?'#F47920':'#2B4AA0', marginTop:6 }}>
-            {currentUser.role==='admin'?'Administrador':'Usuário'}
-          </span>
-        </div>
-      </div>
+      <div className="form-page-grid">
+        <aside className="identity-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+          <div className="identity-avatar" style={{ background:'#1A2B6B' }}>
+            {(currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
+          </div>
+          <div className="identity-name" style={{ color:t.text }}>{currentUser.name}</div>
+          <div className="identity-email" style={{ color:t.muted }}>{currentUser.email}</div>
+          <div style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap', marginTop:12 }}>
+            <span className="badge" style={{ background:currentUser.role==='admin'?'#F4792018':'#2563eb18', color:currentUser.role==='admin'?'#F47920':'#2563eb' }}>
+              {currentUser.role==='admin'?'Administrador':'Usuário'}
+            </span>
+            <span className="badge" style={{ background:'#05966916', color:'#059669' }}>Conta ativa</span>
+          </div>
+          {currentUser.cargo && <div style={{ fontSize:11.5, color:t.muted, marginTop:14 }}>{currentUser.cargo}</div>}
+        </aside>
 
-      {/* Profile fields */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:20, overflow:'hidden' }}>
-        <div style={{ padding:'18px 24px', borderBottom:`1px solid ${t.border}` }}>
-          <span style={{ fontSize:14, fontWeight:600, color:t.text }}>Informações pessoais</span>
-        </div>
-        <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:16 }}>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:6 }}>Nome completo</label>
-            <input value={form.name} onChange={e => setForm(p=>({...p,name:e.target.value}))}
-              style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#0f172a':'#f8fafc', color:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
-          </div>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:6 }}>Cargo / Função</label>
-            <input value={form.cargo} onChange={e => setForm(p=>({...p,cargo:e.target.value}))} placeholder="Ex: Analista de Faturamento"
-              style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#0f172a':'#f8fafc', color:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
-          </div>
-          <div>
-            <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:6 }}>E-mail</label>
-            <input value={currentUser.email} disabled
-              style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#0c1422':'#f0f2f5', color:t.muted, fontSize:13, outline:'none', cursor:'not-allowed' }} />
-            <div style={{ fontSize:11, color:t.muted, marginTop:4 }}>O e-mail identifica sua conta e não pode ser alterado aqui.</div>
-          </div>
-          {profErr && <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444' }}>{profErr}</div>}
-        </div>
-        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end' }}>
-          <button className="btn-primary" onClick={saveProfile}
-            style={{ background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:10, padding:'10px 24px', fontSize:13, fontWeight:600, cursor:'pointer', boxShadow:'0 4px 14px rgba(244,121,32,.35)', minWidth:140 }}>
-            {saved?'✓ Salvo!':'Salvar alterações'}
-          </button>
-        </div>
-      </div>
-
-      {/* Password change */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, overflow:'hidden' }}>
-        <div style={{ padding:'18px 24px', borderBottom:`1px solid ${t.border}` }}>
-          <span style={{ fontSize:14, fontWeight:600, color:t.text }}>Alterar senha</span>
-        </div>
-        <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:16 }}>
-          {pwdErr   && <div style={{ background:'#ef444415', border:'1px solid #ef444440', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#ef4444' }}>{pwdErr}</div>}
-          {pwdSaved && <div style={{ background:'#10b98115', border:'1px solid #10b98140', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#10b981' }}>✓ Senha alterada com sucesso!</div>}
-          {[
-            { key:'current', label:'Senha atual',       ph:'••••••••' },
-            { key:'newPwd',  label:'Nova senha',         ph:'Mínimo 8 caracteres' },
-            { key:'confirm', label:'Confirmar nova senha', ph:'Repita a nova senha' },
-          ].map(({ key, label, ph }) => (
-            <div key={key}>
-              <label style={{ fontSize:12, fontWeight:600, color:t.muted, display:'block', marginBottom:6 }}>{label}</label>
-              <input type="password" value={pwdForm[key]} onChange={e => setPwdForm(p=>({...p,[key]:e.target.value}))} placeholder={ph}
-                style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:`1px solid ${t.border}`, background:dark?'#0f172a':'#f8fafc', color:t.text, fontSize:13, outline:'none', fontFamily:"'DM Sans',sans-serif" }} />
+        <div className="form-stack">
+          <form onSubmit={saveProfile} className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div>
+                <div className="ui-panel-title" style={{ color:t.text }}>Informações pessoais</div>
+                <div className="ui-panel-copy" style={{ color:t.muted }}>Nome e função exibidos no sistema e nos registros.</div>
+              </div>
+              <div className="ui-stat-icon" style={{ color:'#2563eb', background:'#2563eb14' }}>{ICONS.users}</div>
             </div>
-          ))}
-        </div>
-        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end' }}>
-          <button className="btn-primary" onClick={savePwd} disabled={saving}
-            style={{ background:'linear-gradient(135deg,#F47920,#1A2B6B)', color:'white', border:'none', borderRadius:10, padding:'10px 24px', fontSize:13, fontWeight:600, cursor:'pointer', boxShadow:'0 4px 14px rgba(244,121,32,.35)', minWidth:140 }}>
-            {saving?'Salvando…':'Alterar senha'}
-          </button>
+            <div className="ui-panel-body">
+              {profErr && <Alert tone="error" style={{ marginBottom:16 }}>{profErr}</Alert>}
+              {saved && <Alert tone="success" style={{ marginBottom:16 }}>Informações atualizadas.</Alert>}
+              <div className="form-fields">
+                <Field t={t} htmlFor="profile-name" label="Nome completo">
+                  <TextInput id="profile-name" t={t} dark={dark} value={form.name} autoComplete="name" required disabled={profileSaving}
+                    onChange={event => { setForm(current=>({...current,name:event.target.value})); setSaved(false); }} />
+                </Field>
+                <Field t={t} htmlFor="profile-role" label="Cargo / Função">
+                  <TextInput id="profile-role" t={t} dark={dark} value={form.cargo} placeholder="Ex: Analista de Faturamento" autoComplete="organization-title" disabled={profileSaving}
+                    onChange={event => { setForm(current=>({...current,cargo:event.target.value})); setSaved(false); }} />
+                </Field>
+                <Field t={t} htmlFor="profile-email" label="E-mail" hint="O e-mail identifica a conta e não pode ser alterado." style={{ gridColumn:'1/-1' }}>
+                  <TextInput id="profile-email" t={t} dark={dark} type="email" value={currentUser.email} readOnly />
+                </Field>
+              </div>
+            </div>
+            <div className="form-actions">
+              <Button t={t} dark={dark} type="submit" disabled={profileSaving} style={{ minWidth:160 }}>
+                {profileSaving ? <><span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> Salvando...</> : 'Salvar alterações'}
+              </Button>
+            </div>
+          </form>
+
+          <form onSubmit={savePwd} className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div>
+                <div className="ui-panel-title" style={{ color:t.text }}>Segurança da conta</div>
+                <div className="ui-panel-copy" style={{ color:t.muted }}>A senha nova deve ter pelo menos 8 caracteres.</div>
+              </div>
+              <div className="ui-stat-icon" style={{ color:'#F47920', background:'#F4792014' }}>{ICONS.settings}</div>
+            </div>
+            <div className="ui-panel-body">
+              {pwdErr && <Alert tone="error" style={{ marginBottom:16 }}>{pwdErr}</Alert>}
+              {pwdSaved && <Alert tone="success" style={{ marginBottom:16 }}>Senha alterada com sucesso.</Alert>}
+              <div className="form-fields">
+                <Field t={t} htmlFor="current-password" label="Senha atual" style={{ gridColumn:'1/-1' }}>
+                  <TextInput id="current-password" t={t} dark={dark} type={showPasswords?'text':'password'} value={pwdForm.current}
+                    placeholder="Sua senha atual" autoComplete="current-password" disabled={saving}
+                    onChange={event => setPwdForm(current=>({...current,current:event.target.value}))} />
+                </Field>
+                <Field t={t} htmlFor="new-password" label="Nova senha">
+                  <TextInput id="new-password" t={t} dark={dark} type={showPasswords?'text':'password'} value={pwdForm.newPwd}
+                    placeholder="Mínimo de 8 caracteres" autoComplete="new-password" minLength={8} disabled={saving}
+                    onChange={event => setPwdForm(current=>({...current,newPwd:event.target.value}))} />
+                </Field>
+                <Field t={t} htmlFor="confirm-password" label="Confirmar nova senha">
+                  <TextInput id="confirm-password" t={t} dark={dark} type={showPasswords?'text':'password'} value={pwdForm.confirm}
+                    placeholder="Repita a nova senha" autoComplete="new-password" minLength={8} disabled={saving}
+                    onChange={event => setPwdForm(current=>({...current,confirm:event.target.value}))} />
+                </Field>
+              </div>
+              <label style={{ display:'inline-flex', alignItems:'center', gap:8, marginTop:14, fontSize:11.5, color:t.muted, cursor:'pointer' }}>
+                <input type="checkbox" checked={showPasswords} onChange={event => setShowPasswords(event.target.checked)} disabled={saving} />
+                Mostrar senhas
+              </label>
+            </div>
+            <div className="form-actions">
+              <Button t={t} dark={dark} type="submit" disabled={saving} style={{ minWidth:160 }}>
+                {saving ? <><span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span> Alterando...</> : 'Alterar senha'}
+              </Button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -2647,66 +3542,107 @@ function SettingsPage({ dark, t }) {
     catch { return { tolerancia:'0,01', formato:'PDF' }; }
   });
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
 
-  const save = () => {
-    saveClinicSettings(clinic);
-    localStorage.setItem('cs_audit_cfg', JSON.stringify(audit));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const save = (event) => {
+    event?.preventDefault();
+    setError('');
+    setSaved(false);
+    const normalizedClinic = {
+      name: clinic.name.trim(),
+      cnpj: clinic.cnpj.trim(),
+      email: clinic.email.trim(),
+    };
+    if (!normalizedClinic.name) {
+      setError('Informe o nome da clínica.');
+      return;
+    }
+    if (normalizedClinic.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClinic.email)) {
+      setError('Informe um e-mail de relatórios válido.');
+      return;
+    }
+    const toleranceValue = Number(String(audit.tolerancia).replace(',', '.'));
+    if (!Number.isFinite(toleranceValue) || toleranceValue < 0) {
+      setError('Informe uma tolerância válida, igual ou maior que zero.');
+      return;
+    }
+    try {
+      saveClinicSettings(normalizedClinic);
+      localStorage.setItem('cs_audit_cfg', JSON.stringify(audit));
+      setClinic(normalizedClinic);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError('Não foi possível salvar as configurações neste navegador.');
+    }
   };
 
   return (
-    <div className="fade-in" style={{ maxWidth:680, margin:"0 auto" }}>
-      <div style={{ marginBottom:28 }}>
-        <h1 style={{ fontSize:26, fontWeight:700, color:t.text, letterSpacing:"-.03em", marginBottom:4 }}>Configurações</h1>
-        <p style={{ fontSize:13, color:t.muted }}>Configurações da clínica e do sistema.</p>
-      </div>
+    <div className="app-page-medium fade-in">
+      <PageHeader t={t} title="Configurações" subtitle="Defina os dados usados nos relatórios e as preferências padrão de auditoria." />
 
-      {/* Clinic */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:20, overflow:"hidden" }}>
-        <div style={{ padding:"18px 24px", borderBottom:`1px solid ${t.border}` }}>
-          <div style={{ fontSize:14, fontWeight:600, color:t.text }}>Clínica</div>
-          <div style={{ fontSize:12, color:t.muted, marginTop:2 }}>Dados utilizados nos relatórios exportados.</div>
-        </div>
-        <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:16 }}>
-          {[
-            { key:'name',  label:'Nome da clínica',      ph:'ConSaúde' },
-            { key:'cnpj',  label:'CNPJ',                  ph:'00.000.000/0001-00' },
-            { key:'email', label:'E-mail de relatórios',  ph:'relatorios@consaude.com.br', type:'email' },
-          ].map(({ key, label, ph, type }) => (
-            <div key={key}>
-              <label style={{ fontSize:12, fontWeight:500, color:t.muted, display:"block", marginBottom:6 }}>{label}</label>
-              <input type={type||'text'} value={clinic[key]} onChange={e => setClinic(p=>({...p,[key]:e.target.value}))} placeholder={ph}
-                style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1px solid ${t.border}`, background:dark?"#0f172a":"#f8fafc", color:t.text, fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+      {error && <Alert tone="error" style={{ marginBottom:16 }}>{error}</Alert>}
+      {saved && <Alert tone="success" style={{ marginBottom:16 }}>Configurações salvas neste navegador.</Alert>}
+
+      <form onSubmit={save}>
+        <div className="settings-grid">
+          <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div>
+                <div className="ui-panel-title" style={{ color:t.text }}>Identificação da clínica</div>
+                <div className="ui-panel-copy" style={{ color:t.muted }}>Dados exibidos nos relatórios exportados.</div>
+              </div>
+              <div className="ui-stat-icon" style={{ color:'#2563eb', background:'#2563eb14' }}>{ICONS.dashboard}</div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Audit */}
-      <div style={{ ...t.card, borderRadius:16, border:`1px solid ${t.border}`, marginBottom:20, overflow:"hidden" }}>
-        <div style={{ padding:"18px 24px", borderBottom:`1px solid ${t.border}` }}>
-          <span style={{ fontSize:14, fontWeight:600, color:t.text }}>Auditoria</span>
-        </div>
-        <div style={{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:16 }}>
-          {[
-            { key:'tolerancia', label:'Tolerância de divergência (R$)', ph:'0,01' },
-            { key:'formato',    label:'Formato padrão de exportação',   ph:'PDF'  },
-          ].map(({ key, label, ph }) => (
-            <div key={key}>
-              <label style={{ fontSize:12, fontWeight:500, color:t.muted, display:"block", marginBottom:6 }}>{label}</label>
-              <input value={audit[key]} onChange={e => setAudit(p=>({...p,[key]:e.target.value}))} placeholder={ph}
-                style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1px solid ${t.border}`, background:dark?"#0f172a":"#f8fafc", color:t.text, fontSize:13, outline:"none", fontFamily:"'DM Sans',sans-serif" }} />
+            <div className="ui-panel-body form-stack" style={{ gap:15 }}>
+              <Field t={t} htmlFor="clinic-name" label="Nome da clínica">
+                <TextInput id="clinic-name" t={t} dark={dark} value={clinic.name} placeholder="ConSaúde" required
+                  onChange={event => { setClinic(current => ({ ...current, name:event.target.value })); setSaved(false); }} />
+              </Field>
+              <Field t={t} htmlFor="clinic-cnpj" label="CNPJ" hint="Opcional. Use o formato 00.000.000/0001-00.">
+                <TextInput id="clinic-cnpj" t={t} dark={dark} value={clinic.cnpj} placeholder="00.000.000/0001-00" inputMode="numeric"
+                  onChange={event => { setClinic(current => ({ ...current, cnpj:event.target.value })); setSaved(false); }} />
+              </Field>
+              <Field t={t} htmlFor="clinic-email" label="E-mail de relatórios">
+                <TextInput id="clinic-email" t={t} dark={dark} type="email" value={clinic.email} placeholder="relatorios@consaude.com.br" autoComplete="email"
+                  onChange={event => { setClinic(current => ({ ...current, email:event.target.value })); setSaved(false); }} />
+              </Field>
             </div>
-          ))}
-        </div>
-      </div>
+          </section>
 
-      <div style={{ display:"flex", justifyContent:"flex-end" }}>
-        <button className="btn-primary" onClick={save} style={{ background:"linear-gradient(135deg,#F47920,#1A2B6B)", color:"white", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 4px 14px rgba(244,121,32,.35)", minWidth:160 }}>
-          {saved?'✓ Salvo!':'Salvar Configurações'}
-        </button>
-      </div>
+          <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
+            <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+              <div>
+                <div className="ui-panel-title" style={{ color:t.text }}>Preferências de auditoria</div>
+                <div className="ui-panel-copy" style={{ color:t.muted }}>Valores usados como padrão em novos relatórios.</div>
+              </div>
+              <div className="ui-stat-icon" style={{ color:'#F47920', background:'#F4792014' }}>{ICONS.settings}</div>
+            </div>
+            <div className="ui-panel-body form-stack" style={{ gap:15 }}>
+              <Field t={t} htmlFor="audit-tolerance" label="Tolerância de divergência (R$)" hint="Diferenças abaixo deste valor podem ser ignoradas.">
+                <TextInput id="audit-tolerance" t={t} dark={dark} value={audit.tolerancia} placeholder="0,01" inputMode="decimal"
+                  onChange={event => { setAudit(current => ({ ...current, tolerancia:event.target.value })); setSaved(false); }} />
+              </Field>
+              <Field t={t} htmlFor="audit-format" label="Formato padrão de exportação">
+                <SelectInput id="audit-format" t={t} dark={dark} value={audit.formato}
+                  onChange={event => { setAudit(current => ({ ...current, formato:event.target.value })); setSaved(false); }}>
+                  <option value="PDF">PDF</option>
+                  <option value="XLSX">Excel (.xlsx)</option>
+                </SelectInput>
+              </Field>
+              <div style={{ padding:12, borderRadius:RADIUS.md, background:dark?'rgba(255,255,255,.025)':'#f8fafc', border:`1px solid ${t.border}`, fontSize:11.5, lineHeight:1.55, color:t.muted }}>
+                Estas preferências ficam armazenadas somente neste navegador.
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:18 }}>
+          <Button t={t} dark={dark} type="submit" style={{ minWidth:180 }}>
+            {saved ? <>{ICONS.check} Configurações salvas</> : 'Salvar configurações'}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
