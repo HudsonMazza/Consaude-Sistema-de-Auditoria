@@ -167,6 +167,16 @@ export function atualizarUsuario(uid, { nome, cargo, role }) {
 }
 
 /**
+ * Salva a foto de perfil do próprio usuário (data URL base64) ou a remove
+ * (photo = null). A imagem é redimensionada no cliente antes de chegar aqui —
+ * as Security Rules recusam strings acima de ~500 KB para proteger o limite de
+ * 1 MB por documento do Firestore.
+ */
+export function atualizarFotoPerfil(uid, photo) {
+  return updateDoc(doc(db, "users", uid), { photo });
+}
+
+/**
  * Ativa/desativa o acesso. No plano Spark o SDK do cliente não apaga a conta de
  * outro usuário no Auth — desativar bloqueia o acesso via Security Rules, que é
  * o que importa. Para excluir a conta de vez, use o Console do Firebase.

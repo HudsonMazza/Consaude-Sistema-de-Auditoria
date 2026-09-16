@@ -7,8 +7,11 @@ import { firebaseReady } from "./src/firebase";
 import {
   observarSessao, login, logout, enviarResetDeSenha, alterarPropriaSenha,
   listarUsuarios, criarUsuario, atualizarUsuario, definirUsuarioDesativado,
-  mensagemDeErro,
+  atualizarFotoPerfil, mensagemDeErro,
 } from "./src/auth";
+import {
+  observarHistorico, salvarAuditoria, salvarRelatorioIA, excluirAuditoria, migrarHistoricoLocal,
+} from "./src/audits";
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -1260,6 +1263,7 @@ export default function App() {
   const [cols2,         setCols2]         = useState(null);
   const [aiLoading,     setAiLoading]     = useState(false);
   const [aiError,       setAiError]       = useState(null);
+  const [histWarning,   setHistWarning]   = useState(null);
   const profileRef   = useRef(null);
   const parsedCache  = useRef({ prod: null, rep: null });
 
@@ -1290,13 +1294,15 @@ export default function App() {
     setCurrentUser(updated);
   };
 
-  // Carregar histórico do localStorage
+  // Histórico vem do Firestore em tempo real. Depende só de id/role para não
+  // reassinar a cada edição de perfil (nome/foto) via handleUpdateUser.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("audit-hist");
-      if (saved) setHistorico(JSON.parse(saved));
-    } catch (_) {}
-  }, []);
+    if (!currentUser) { setHistorico([]); return; }
+    migrarHistoricoLocal(currentUser).catch(() => {});
+    return observarHistorico(currentUser, setHistorico, () => {
+      setHistWarning("Não foi possível carregar o histórico. Verifique sua conexão.");
+    });
+  }, [currentUser?.id, currentUser?.role]);
 
   // Fechar dropdown de perfil ao clicar fora
   useEffect(() => {
@@ -1405,7 +1411,6 @@ export default function App() {
       step(5, 100);
       await new Promise((r) => setTimeout(r, 350));
 
-      const entryId = Date.now();
       const res = {
         totalMedicos:           allMeds.size,
         medicosComDivergencia:  divs.length,
@@ -1419,22 +1424,22 @@ export default function App() {
         file1Name:    file1.name,
         file2Name:    file2.name,
       };
-      setResultados({ ...res, _histId: entryId });
-
       const entry = {
-        id:          entryId,
         data:        new Date().toLocaleDateString("pt-BR"),
         periodo:     res.referencia,
         arquivos:    `${file1.name} / ${file2.name}`,
         divergencias: divs.length,
         valor:       res.valorTotal,
         resultados:  res,
-        userId:      currentUser?.id,
-        userName:    currentUser?.name,
       };
-      const hist = [entry, ...historico].slice(0, 50);
-      setHistorico(hist);
-      try { localStorage.setItem("audit-hist", JSON.stringify(hist)); } catch (_) {}
+      let auditId = null;
+      try {
+        auditId = await salvarAuditoria(entry, currentUser);
+        if (auditId === null) setHistWarning("Auditoria muito grande para salvar no histórico compartilhado — disponível apenas nesta sessão.");
+      } catch {
+        setHistWarning("Não foi possível salvar no histórico compartilhado. O resultado continua disponível nesta sessão.");
+      }
+      setResultados({ ...res, _histId: auditId });
       setPeriodoAuditoria('');
 
       setProcessing(false);
@@ -1483,13 +1488,10 @@ export default function App() {
       a.download = `relatorio-ia-${new Date().toISOString().slice(0, 10)}.html`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      // Salva o HTML no registro do histórico para acesso futuro
+      // Anexa o HTML ao registro no Firestore para acesso futuro
       if (resultados._histId) {
-        const updatedHist = historico.map(e =>
-          e.id === resultados._histId ? { ...e, aiReportHTML: html } : e
-        );
-        setHistorico(updatedHist);
-        try { localStorage.setItem("audit-hist", JSON.stringify(updatedHist)); } catch (_) {}
+        const ok = await salvarRelatorioIA(resultados._histId, resultados, html).catch(() => false);
+        if (!ok) setHistWarning("Relatório gerado, mas não foi possível salvá-lo no histórico compartilhado.");
       }
     } catch (err) {
       setAiError(err.message);
@@ -1498,18 +1500,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteAudit = (id) => {
-    const updatedHist = historico.filter(e => e.id !== id);
-    setHistorico(updatedHist);
-    try { localStorage.setItem("audit-hist", JSON.stringify(updatedHist)); } catch (_) {}
+  const handleDeleteAudit = async (id) => {
+    try { await excluirAuditoria(id); }
+    catch { setHistWarning("Não foi possível excluir este registro. Tente novamente."); }
   };
 
   const t = dark ? themes.dark : themes.light;
   const navItems = getNavItems(currentUser?.role);
   const activeNavItem = navItems.find(item => item.id === activePage || (activePage === 'results' && item.id === 'audits'));
-  const historicoFiltrado = currentUser?.role === 'admin'
-    ? historico
-    : historico.filter(h => h.userId === currentUser?.id);
 
   if (!firebaseReady) return <FirebaseSetupScreen />;
   if (!authReady) return <div style={{ minHeight: '100vh', background: '#080e18' }} />;
@@ -1618,6 +1616,14 @@ export default function App() {
         </div>
       )}
 
+      {histWarning && (
+        <div className="ai-error-toast" role="status" aria-live="polite" style={{ ...t.card, border:'1px solid #f59e0b50', borderRadius:RADIUS.lg, bottom: aiError ? 110 : undefined }}>
+          <span style={{ color:'#f59e0b', flexShrink:0, marginTop:2 }}>{ICONS.warning}</span>
+          <div style={{ flex:1, fontSize:12, color:t.text, lineHeight:1.5 }}>{histWarning}</div>
+          <button type="button" className="cs-icon-btn" onClick={() => setHistWarning(null)} aria-label="Fechar aviso" style={{ color:t.muted }}>{ICONS.x}</button>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen?"open":""}`} style={{
         width: sidebarOpen ? 240 : 72, ...t.sidebar,
@@ -1693,8 +1699,10 @@ export default function App() {
             </button>
             <div ref={profileRef} style={{ position:"relative" }}>
               <button type="button" onClick={() => setProfileOpen((p)=>!p)} aria-label="Abrir menu da conta" aria-haspopup="menu" aria-expanded={profileOpen}
-                style={{ background:'#1A2B6B', border:`1px solid ${dark?'#40558c':'#d7deec'}`, borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:14 }}>
-                {(currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
+                style={{ background:'#1A2B6B', border:`1px solid ${dark?'#40558c':'#d7deec'}`, borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:14, overflow:'hidden', padding:0 }}>
+                {currentUser.photo
+                  ? <img src={currentUser.photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  : (currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
               </button>
               {profileOpen && (
                 <div role="menu" style={{ position:'absolute', right:0, top:44, ...t.card, borderRadius:8, border:`1px solid ${t.border}`, padding:8, minWidth:220, boxShadow:'0 8px 24px rgba(15,23,42,.16)', zIndex:50 }}>
@@ -1755,7 +1763,7 @@ export default function App() {
               onNewAudit={() => { setActivePage("upload"); setFile1(null); setFile2(null); setUploadError(null); }}
             />
           ) : activePage==="history" ? (
-            <HistoryScreen dark={dark} t={t} historico={historicoFiltrado} currentUser={currentUser}
+            <HistoryScreen dark={dark} t={t} historico={historico} currentUser={currentUser}
               onOpen={(entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); }}
               onDelete={handleDeleteAudit} />
           ) : activePage==="users" ? (
@@ -2601,7 +2609,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
     ['ai', 'Com relatório IA'],
   ];
   const stats = [
-    { label:'Auditorias salvas', value:historico.length, detail:'Neste navegador', icon:ICONS.history, color:'#2563eb' },
+    { label:'Auditorias salvas', value:historico.length, detail:'Sincronizadas na nuvem', icon:ICONS.history, color:'#2563eb' },
     { label:'Com divergências', value:withDifferences.length, detail:'Requerem revisão', icon:ICONS.alert, color:'#d97706' },
     { label:'Divergências', value:totalDifferences, detail:'Total identificado', icon:ICONS.trending, color:'#dc2626' },
     { label:'Relatórios IA', value:withAI.length, detail:'Análises disponíveis', icon:ICONS.brain, color:'#059669' },
@@ -2638,7 +2646,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
 
   return (
     <div className="app-page fade-in">
-      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios armazenados neste navegador." />
+      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios da clínica, sincronizados na nuvem." />
 
       <div className="ui-stat-grid" aria-label="Resumo do histórico">
         {stats.map(stat => (
@@ -2753,7 +2761,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
       </section>
 
       {confirmDel && (
-        <Modal t={t} dark={dark} size="sm" danger title="Excluir auditoria?" subtitle="Esta ação remove o registro deste navegador."
+        <Modal t={t} dark={dark} size="sm" danger title="Excluir auditoria?" subtitle="Esta ação remove o registro definitivamente para todos os usuários."
           onClose={() => setConfirmDel(null)}
           footer={
             <>
@@ -2792,7 +2800,7 @@ const USER_MANAGEMENT_CSS = `
 .users-table td{padding:14px 16px;vertical-align:middle}
 .users-table tbody tr{transition:background .15s ease,opacity .15s ease}
 .users-person{display:flex;align-items:center;gap:11px;min-width:180px}
-.users-avatar{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0}
+.users-avatar{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0;overflow:hidden}
 .users-name{font-size:13.5px;font-weight:650;line-height:1.3}
 .users-self{font-size:10px;color:#F47920;margin-top:2px;font-weight:600}
 .users-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;white-space:nowrap}
@@ -3149,7 +3157,7 @@ function UserManagementPage({ dark, t, currentUser }) {
                     <tr key={user.id} className="table-row" style={{ borderTop:`1px solid ${t.border}`, opacity:user.disabled ? 0.72 : 1 }}>
                       <td>
                         <div className="users-person">
-                          <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}>{displayName(user).charAt(0).toUpperCase()}</div>
+                          <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}><AvatarContent photo={user.photo} initial={displayName(user).charAt(0).toUpperCase()} /></div>
                           <div>
                             <div className="users-name" style={{ color:t.text }}>{displayName(user)}</div>
                             {user.id===currentUser.id && <div className="users-self">Sua conta</div>}
@@ -3173,7 +3181,7 @@ function UserManagementPage({ dark, t, currentUser }) {
                 <article key={user.id} className="users-mobile-card" style={{ border:`1px solid ${t.border}`, background:dark?'rgba(255,255,255,.018)':'#fff', opacity:user.disabled ? 0.76 : 1 }}>
                   <div className="users-mobile-head">
                     <div className="users-person">
-                      <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}>{displayName(user).charAt(0).toUpperCase()}</div>
+                      <div className="users-avatar" style={{ background:user.disabled?'#64748b':'#1A2B6B' }}><AvatarContent photo={user.photo} initial={displayName(user).charAt(0).toUpperCase()} /></div>
                       <div>
                         <div className="users-name" style={{ color:t.text }}>{displayName(user)}</div>
                         <div style={{ fontSize:11.5, color:t.muted, marginTop:2, overflowWrap:'anywhere' }}>{user.email||'—'}</div>
@@ -3365,7 +3373,7 @@ function UserManagementPage({ dark, t, currentUser }) {
           }
         >
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
-            <div className="users-avatar" style={{ background:'#dc2626' }}>{displayName(confirmDel).charAt(0).toUpperCase()}</div>
+            <div className="users-avatar" style={{ background:'#dc2626' }}><AvatarContent photo={confirmDel.photo} initial={displayName(confirmDel).charAt(0).toUpperCase()} /></div>
             <div>
               <div style={{ fontSize:13.5, fontWeight:700, color:t.text }}>{displayName(confirmDel)}</div>
               <div style={{ fontSize:11.5, color:t.muted, marginTop:2, overflowWrap:'anywhere' }}>{confirmDel.email}</div>
@@ -3379,6 +3387,40 @@ function UserManagementPage({ dark, t, currentUser }) {
 }
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
+// Mostra a foto de perfil (se houver) ou a inicial, dentro de qualquer avatar
+// redondo/quadrado. O contêiner precisa de overflow:hidden para recortar a foto.
+function AvatarContent({ photo, initial }) {
+  return photo
+    ? <img src={photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+    : initial;
+}
+
+// Redimensiona e recorta (cover) a imagem para um quadrado, devolvendo um data
+// URL JPEG pequeno o suficiente para caber no documento do Firestore. Toda a
+// conversão acontece no navegador — o arquivo original nunca sai da máquina.
+function lerFotoRedimensionada(file, size = 256, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) return reject(new Error('Selecione um arquivo de imagem.'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Imagem inválida ou corrompida.'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const escala = Math.max(size / img.width, size / img.height);
+        const w = img.width * escala, h = img.height * escala;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function ProfilePage({ dark, t, currentUser, onUpdateUser }) {
   const [form,     setForm]     = useState({ name:currentUser.name, cargo:currentUser.cargo||'' });
   const [saved,    setSaved]    = useState(false);
@@ -3389,6 +3431,40 @@ function ProfilePage({ dark, t, currentUser, onUpdateUser }) {
   const [profileSaving, setProfileSaving] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
   const [profErr, setProfErr] = useState('');
+  const [photoSaving, setPhotoSaving] = useState(false);
+  const [photoErr,    setPhotoErr]    = useState('');
+  const fileRef = useRef(null);
+
+  const escolherFoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';   // permite reescolher o mesmo arquivo depois
+    if (!file) return;
+    setPhotoErr('');
+    if (file.size > 8 * 1024 * 1024) { setPhotoErr('Imagem muito grande. Use um arquivo de até 8 MB.'); return; }
+    setPhotoSaving(true);
+    try {
+      const photo = await lerFotoRedimensionada(file);
+      await atualizarFotoPerfil(currentUser.id, photo);
+      onUpdateUser({ ...currentUser, photo });
+    } catch (err) {
+      setPhotoErr(err?.message || mensagemDeErro(err));
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
+
+  const removerFoto = async () => {
+    setPhotoErr('');
+    setPhotoSaving(true);
+    try {
+      await atualizarFotoPerfil(currentUser.id, null);
+      onUpdateUser({ ...currentUser, photo: null });
+    } catch (err) {
+      setPhotoErr(mensagemDeErro(err));
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
 
   const saveProfile = async (event) => {
     event?.preventDefault();
@@ -3442,8 +3518,30 @@ function ProfilePage({ dark, t, currentUser, onUpdateUser }) {
 
       <div className="form-page-grid">
         <aside className="identity-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}>
-          <div className="identity-avatar" style={{ background:'#1A2B6B' }}>
-            {(currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
+          <div style={{ position:'relative', width:72, margin:'0 auto 10px' }}>
+            <div className="identity-avatar" style={{ background:'#1A2B6B', overflow:'hidden', margin:0 }}>
+              {currentUser.photo
+                ? <img src={currentUser.photo} alt="Foto de perfil" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                : (currentUser.name||currentUser.email||'U').charAt(0).toUpperCase()}
+              {photoSaving && (
+                <div style={{ position:'absolute', inset:0, background:'rgba(15,23,42,.55)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff' }}>
+                  <span className="spin" style={{ display:'flex' }}>{ICONS.loader}</span>
+                </div>
+              )}
+            </div>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={photoSaving}
+              aria-label="Alterar foto de perfil" title="Alterar foto"
+              style={{ position:'absolute', right:-2, bottom:-2, width:26, height:26, borderRadius:'50%', border:`2px solid ${t.card.background}`, background:'#F47920', color:'#fff', cursor:photoSaving?'default':'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={escolherFoto} style={{ display:'none' }} />
+          </div>
+          <div style={{ minHeight:16, marginBottom:6, textAlign:'center' }}>
+            {photoErr
+              ? <span style={{ fontSize:11, color:'#dc2626' }}>{photoErr}</span>
+              : currentUser.photo && !photoSaving
+                ? <button type="button" onClick={removerFoto} style={{ background:'none', border:'none', color:t.muted, fontSize:11, cursor:'pointer', textDecoration:'underline', padding:0 }}>Remover foto</button>
+                : null}
           </div>
           <div className="identity-name" style={{ color:t.text }}>{currentUser.name}</div>
           <div className="identity-email" style={{ color:t.muted }}>{currentUser.email}</div>

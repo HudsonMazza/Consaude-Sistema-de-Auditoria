@@ -54,18 +54,45 @@ service cloud.firestore {
           && request.resource.data.email == resource.data.email
         )
         ||
-        // O próprio usuário só ajusta nome/cargo e baixa o flag de troca de
-        // senha. Não consegue se promover a admin nem se reativar.
+        // O próprio usuário só ajusta nome/cargo/foto e baixa o flag de troca de
+        // senha. Não consegue se promover a admin nem se reativar. A foto tem
+        // teto de tamanho para não estourar o limite de 1 MB do documento.
         (
           request.auth.uid == uid
           && ativo()
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['name', 'cargo', 'mustChangePassword'])
+               .hasOnly(['name', 'cargo', 'mustChangePassword', 'photo'])
           && request.resource.data.get('mustChangePassword', false) == false
+          && (request.resource.data.get('photo', null) == null
+              || request.resource.data.photo.size() < 500000)
         );
 
       // Exclusão definitiva só pelo Console do Firebase — o app desativa.
       allow delete: if false;
+    }
+
+    function auditoriaValida(dados) {
+      return dados.userId is string && dados.resultados is map;
+    }
+
+    match /audits/{auditId} {
+      // Cada um enxerga as próprias auditorias; admins enxergam todas.
+      allow read: if ativo() && (admin() || resource.data.userId == request.auth.uid);
+
+      // Admin pode criar em nome de outro userId (migração do histórico legado).
+      allow create: if ativo()
+        && (admin() || request.resource.data.userId == request.auth.uid)
+        && auditoriaValida(request.resource.data);
+
+      // Único update permitido pelo app: anexar o relatório de IA depois de
+      // gerado. Teto de tamanho pela mesma razão do `photo` em users/{uid}.
+      allow update: if ativo()
+        && (admin() || resource.data.userId == request.auth.uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiReportHTML'])
+        && request.resource.data.aiReportHTML is string
+        && request.resource.data.aiReportHTML.size() < 900000;
+
+      allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
     }
 
     // Nenhuma outra coleção é acessível por padrão.
