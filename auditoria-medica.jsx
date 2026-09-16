@@ -9,6 +9,9 @@ import {
   listarUsuarios, criarUsuario, atualizarUsuario, definirUsuarioDesativado,
   atualizarFotoPerfil, mensagemDeErro,
 } from "./src/auth";
+import {
+  observarHistorico, salvarAuditoria, salvarRelatorioIA, excluirAuditoria, migrarHistoricoLocal,
+} from "./src/audits";
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -1260,6 +1263,7 @@ export default function App() {
   const [cols2,         setCols2]         = useState(null);
   const [aiLoading,     setAiLoading]     = useState(false);
   const [aiError,       setAiError]       = useState(null);
+  const [histWarning,   setHistWarning]   = useState(null);
   const profileRef   = useRef(null);
   const parsedCache  = useRef({ prod: null, rep: null });
 
@@ -1290,13 +1294,15 @@ export default function App() {
     setCurrentUser(updated);
   };
 
-  // Carregar histórico do localStorage
+  // Histórico vem do Firestore em tempo real. Depende só de id/role para não
+  // reassinar a cada edição de perfil (nome/foto) via handleUpdateUser.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("audit-hist");
-      if (saved) setHistorico(JSON.parse(saved));
-    } catch (_) {}
-  }, []);
+    if (!currentUser) { setHistorico([]); return; }
+    migrarHistoricoLocal(currentUser).catch(() => {});
+    return observarHistorico(currentUser, setHistorico, () => {
+      setHistWarning("Não foi possível carregar o histórico. Verifique sua conexão.");
+    });
+  }, [currentUser?.id, currentUser?.role]);
 
   // Fechar dropdown de perfil ao clicar fora
   useEffect(() => {
@@ -1405,7 +1411,6 @@ export default function App() {
       step(5, 100);
       await new Promise((r) => setTimeout(r, 350));
 
-      const entryId = Date.now();
       const res = {
         totalMedicos:           allMeds.size,
         medicosComDivergencia:  divs.length,
@@ -1419,22 +1424,22 @@ export default function App() {
         file1Name:    file1.name,
         file2Name:    file2.name,
       };
-      setResultados({ ...res, _histId: entryId });
-
       const entry = {
-        id:          entryId,
         data:        new Date().toLocaleDateString("pt-BR"),
         periodo:     res.referencia,
         arquivos:    `${file1.name} / ${file2.name}`,
         divergencias: divs.length,
         valor:       res.valorTotal,
         resultados:  res,
-        userId:      currentUser?.id,
-        userName:    currentUser?.name,
       };
-      const hist = [entry, ...historico].slice(0, 50);
-      setHistorico(hist);
-      try { localStorage.setItem("audit-hist", JSON.stringify(hist)); } catch (_) {}
+      let auditId = null;
+      try {
+        auditId = await salvarAuditoria(entry, currentUser);
+        if (auditId === null) setHistWarning("Auditoria muito grande para salvar no histórico compartilhado — disponível apenas nesta sessão.");
+      } catch {
+        setHistWarning("Não foi possível salvar no histórico compartilhado. O resultado continua disponível nesta sessão.");
+      }
+      setResultados({ ...res, _histId: auditId });
       setPeriodoAuditoria('');
 
       setProcessing(false);
@@ -1483,13 +1488,10 @@ export default function App() {
       a.download = `relatorio-ia-${new Date().toISOString().slice(0, 10)}.html`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      // Salva o HTML no registro do histórico para acesso futuro
+      // Anexa o HTML ao registro no Firestore para acesso futuro
       if (resultados._histId) {
-        const updatedHist = historico.map(e =>
-          e.id === resultados._histId ? { ...e, aiReportHTML: html } : e
-        );
-        setHistorico(updatedHist);
-        try { localStorage.setItem("audit-hist", JSON.stringify(updatedHist)); } catch (_) {}
+        const ok = await salvarRelatorioIA(resultados._histId, resultados, html).catch(() => false);
+        if (!ok) setHistWarning("Relatório gerado, mas não foi possível salvá-lo no histórico compartilhado.");
       }
     } catch (err) {
       setAiError(err.message);
@@ -1498,18 +1500,14 @@ export default function App() {
     }
   };
 
-  const handleDeleteAudit = (id) => {
-    const updatedHist = historico.filter(e => e.id !== id);
-    setHistorico(updatedHist);
-    try { localStorage.setItem("audit-hist", JSON.stringify(updatedHist)); } catch (_) {}
+  const handleDeleteAudit = async (id) => {
+    try { await excluirAuditoria(id); }
+    catch { setHistWarning("Não foi possível excluir este registro. Tente novamente."); }
   };
 
   const t = dark ? themes.dark : themes.light;
   const navItems = getNavItems(currentUser?.role);
   const activeNavItem = navItems.find(item => item.id === activePage || (activePage === 'results' && item.id === 'audits'));
-  const historicoFiltrado = currentUser?.role === 'admin'
-    ? historico
-    : historico.filter(h => h.userId === currentUser?.id);
 
   if (!firebaseReady) return <FirebaseSetupScreen />;
   if (!authReady) return <div style={{ minHeight: '100vh', background: '#080e18' }} />;
@@ -1615,6 +1613,14 @@ export default function App() {
             <div style={{ fontSize:11.5, color:t.muted, lineHeight:1.5 }}>{aiError}</div>
           </div>
           <button type="button" className="cs-icon-btn" onClick={() => setAiError(null)} aria-label="Fechar erro" style={{ color:t.muted }}>{ICONS.x}</button>
+        </div>
+      )}
+
+      {histWarning && (
+        <div className="ai-error-toast" role="status" aria-live="polite" style={{ ...t.card, border:'1px solid #f59e0b50', borderRadius:RADIUS.lg, bottom: aiError ? 110 : undefined }}>
+          <span style={{ color:'#f59e0b', flexShrink:0, marginTop:2 }}>{ICONS.warning}</span>
+          <div style={{ flex:1, fontSize:12, color:t.text, lineHeight:1.5 }}>{histWarning}</div>
+          <button type="button" className="cs-icon-btn" onClick={() => setHistWarning(null)} aria-label="Fechar aviso" style={{ color:t.muted }}>{ICONS.x}</button>
         </div>
       )}
 
@@ -1757,7 +1763,7 @@ export default function App() {
               onNewAudit={() => { setActivePage("upload"); setFile1(null); setFile2(null); setUploadError(null); }}
             />
           ) : activePage==="history" ? (
-            <HistoryScreen dark={dark} t={t} historico={historicoFiltrado} currentUser={currentUser}
+            <HistoryScreen dark={dark} t={t} historico={historico} currentUser={currentUser}
               onOpen={(entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); }}
               onDelete={handleDeleteAudit} />
           ) : activePage==="users" ? (
@@ -2603,7 +2609,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
     ['ai', 'Com relatório IA'],
   ];
   const stats = [
-    { label:'Auditorias salvas', value:historico.length, detail:'Neste navegador', icon:ICONS.history, color:'#2563eb' },
+    { label:'Auditorias salvas', value:historico.length, detail:'Sincronizadas na nuvem', icon:ICONS.history, color:'#2563eb' },
     { label:'Com divergências', value:withDifferences.length, detail:'Requerem revisão', icon:ICONS.alert, color:'#d97706' },
     { label:'Divergências', value:totalDifferences, detail:'Total identificado', icon:ICONS.trending, color:'#dc2626' },
     { label:'Relatórios IA', value:withAI.length, detail:'Análises disponíveis', icon:ICONS.brain, color:'#059669' },
@@ -2640,7 +2646,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
 
   return (
     <div className="app-page fade-in">
-      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios armazenados neste navegador." />
+      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios da clínica, sincronizados na nuvem." />
 
       <div className="ui-stat-grid" aria-label="Resumo do histórico">
         {stats.map(stat => (
@@ -2755,7 +2761,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
       </section>
 
       {confirmDel && (
-        <Modal t={t} dark={dark} size="sm" danger title="Excluir auditoria?" subtitle="Esta ação remove o registro deste navegador."
+        <Modal t={t} dark={dark} size="sm" danger title="Excluir auditoria?" subtitle="Esta ação remove o registro definitivamente para todos os usuários."
           onClose={() => setConfirmDel(null)}
           footer={
             <>

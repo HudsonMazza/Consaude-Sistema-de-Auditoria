@@ -84,6 +84,29 @@ operação. Sem ele, o resto não protege nada.
 Ao alterar o arquivo, republique em **Firestore Database → Regras** (cole e
 clique em Publicar) ou com `firebase deploy --only firestore:rules`.
 
+### 3.1 Histórico de auditorias (coleção `audits`) — ⏳ republicar + índice
+
+O histórico saiu do `localStorage` e passou a viver na coleção `audits`, com
+regras próprias no mesmo `firestore.rules`. Dois passos únicos no Console:
+
+1. **Republicar as regras** (Firestore Database → Regras → cole o arquivo
+   atualizado → Publicar). Sem isso, toda leitura/gravação em `audits` é
+   recusada e a tela de Histórico fica vazia com um aviso.
+2. **Criar o índice composto** usado pela consulta de usuários comuns
+   (Firestore Database → Índices → Compostos → Criar índice):
+   - Coleção: `audits`
+   - Campos: `userId` (Crescente), depois `createdAt` (Decrescente)
+   - Escopo: Coleção
+
+   Admins consultam só por `createdAt` e não precisam dele. Se um usuário comum
+   abrir o Histórico antes do índice existir, o Firestore imprime no console do
+   navegador um link que cria o índice pronto — funciona também.
+
+Na primeira vez que cada pessoa entrar após a atualização, o app migra o
+histórico que estava no `localStorage` daquele navegador para o Firestore
+(uma vez só, sem apagar o original). Entradas antigas atribuídas a outro
+usuário só migram quando um admin entrar naquele mesmo navegador.
+
 ---
 
 ## 4. Criar o primeiro administrador — ⏳ pendente
@@ -165,9 +188,6 @@ propósito — exclusão em massa a partir do navegador seria um risco maior.
 - **Chave da OpenAI no bundle** — `VITE_OPENAI_API_KEY` é embutida no JavaScript
   e fica visível para qualquer visitante. Enquanto a chamada não for movida para
   um backend, use uma chave com limite de gasto baixo e rotacione com frequência.
-- **Histórico de auditorias em `localStorage`** — continua no navegador, por
-  máquina, fora das Security Rules. Migrar para o Firestore é o próximo passo
-  para o dado ficar protegido de verdade e sincronizar entre dispositivos.
 - **Gate de troca de senha** — a tela é aplicada no cliente. Quem já tem
   credencial válida poderia pulá-la mexendo no JavaScript, mas só afetaria a
   própria conta (o papel e os dados continuam protegidos pelas regras). Fechar
