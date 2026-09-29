@@ -236,7 +236,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
       </Card>
       <div className="cs-span-12">
         <ActionBar icon={canStart ? 'circle-check' : 'info'}
-          message={canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.' : <span>Falta {missing} para processar.</span>}>
+          message={canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.' : <span>{!file1 && !file2 ? 'Faltam' : 'Falta'} {missing} para processar.</span>}>
           {!compact && <Button variant="ghost" onClick={onShowAudits}>Cancelar</Button>}
           <Button variant="primary" icon="refresh-cw" onClick={startAudit} disabled={!canStart}>Processar auditoria</Button>
         </ActionBar>

@@ -89,3 +89,5 @@ button, input, select, textarea { font-family: inherit; }
 .cs-app[data-layout="compact"] .cs-pagehead__titles { width: 100%; max-width: 100%; }
 .cs-pagehead__meta > span { max-width: 100%; }
 .cs-stat__value small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Processamento da auditoria não é IA: etapa ativa em azul (o violeta fica reservado à IA). */
+.cs-steps--process .cs-step--active .cs-step__mark { color: var(--accent-text); }

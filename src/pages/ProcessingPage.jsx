@@ -27,7 +27,7 @@ export default function ProcessingPage({ steps, progress }) {
             </div>
           </div>
           <ProgressBar label="Progresso da auditoria" value={Math.round(progress)} />
-          <ol className="cs-steps">
+          <ol className="cs-steps cs-steps--process">
             {LABELS.map((label, index) => {
               const completed = steps[index];
               const active = !completed && index === activeStep;
