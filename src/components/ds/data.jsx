@@ -308,19 +308,25 @@ export const Skeleton = ({ width = '100%', height = 12 }) => <span className="cs
  * rowActions(row) → ActionMenu items; primaryAction(row) → { label, icon, onClick } shown inline on desktop.
  * onRowClick(row), selectedKey, loading (skeleton), empty (node), footer (node), caption (a11y), forceMode: 'table'|'cards', openActionsFor (row key whose menu starts open — previews).
  */
-export function DataTable({ columns = [], rows = [], rowKey = (r) => r.id, mobile, rowActions, primaryAction, onRowClick, selectedKey, loading = false, skeletonRows = 5, empty, footer, caption, forceMode, defaultSort, openActionsFor }) {
+export function sortRows(rows, columns, sort) {
+  if (!sort) return rows;
+  const col = columns.find((c) => c.key === sort.key);
+  if (!col) return rows;
+  const get = col.sortValue || ((r) => r[col.key]);
+  return [...rows].sort((a, b) => { const x = get(a), y = get(b); const r = x > y ? 1 : x < y ? -1 : 0; return sort.dir === 'asc' ? r : -r; });
+}
+
+/* App: `sort` + `onSortChange` make sorting controlled (the caller sorts all rows before paginating, e.g. with sortRows). */
+export function DataTable({ columns = [], rows = [], rowKey = (r) => r.id, mobile, rowActions, primaryAction, onRowClick, selectedKey, loading = false, skeletonRows = 5, empty, footer, caption, forceMode, defaultSort, openActionsFor, sort: sortProp, onSortChange }) {
   const [ref, width] = useElementWidth();
   const { compact } = useViewport();
-  const [sort, setSort] = useState(defaultSort || null);
+  const [innerSort, setInnerSort] = useState(defaultSort || null);
+  const controlled = typeof onSortChange === 'function';
+  const sort = controlled ? sortProp || null : innerSort;
+  const setSort = (fn) => { const next = typeof fn === 'function' ? fn(sort) : fn; controlled ? onSortChange(next) : setInnerSort(next); };
   const mode = forceMode || ((compact || (width > 0 && width < 640)) && mobile ? 'cards' : 'table');
   const visible = columns.filter((c) => !c.priority || c.priority === 1 || (c.priority === 2 && (width === 0 || width >= 900)) || (c.priority === 3 && (width === 0 || width >= 1100)));
-  const sorted = useMemo(() => {
-    if (!sort) return rows;
-    const col = columns.find((c) => c.key === sort.key);
-    if (!col) return rows;
-    const get = col.sortValue || ((r) => r[col.key]);
-    return [...rows].sort((a, b) => { const x = get(a), y = get(b); const r = x > y ? 1 : x < y ? -1 : 0; return sort.dir === 'asc' ? r : -r; });
-  }, [rows, sort]);
+  const sorted = useMemo(() => (controlled ? rows : sortRows(rows, columns, sort)), [rows, sort, controlled]);
   const toggleSort = (key) => setSort((s) => (!s || s.key !== key ? { key, dir: 'desc' } : s.dir === 'desc' ? { key, dir: 'asc' } : null));
   const hasActions = rowActions || primaryAction;
 
@@ -380,7 +386,7 @@ export function DataTable({ columns = [], rows = [], rowKey = (r) => r.id, mobil
                   {hasActions && (
                     <td data-align="right" style={{ width: 1 }}>
                       <div className="cs-cell-actions">
-                        {pa && <Button size="sm" variant="ghost" icon={pa.icon} iconEnd={pa.iconEnd} onClick={pa.onClick} aria-label={pa.ariaLabel}>{pa.label}</Button>}
+                        {pa && <Button size="sm" variant="ghost" icon={pa.icon} iconEnd={pa.iconEnd} onClick={pa.onClick} aria-label={pa.ariaLabel} disabled={pa.disabled}>{pa.label}</Button>}
                         {acts && acts.length > 0 && <ActionMenu items={acts} defaultOpen={openActionsFor === k} autoFocus={openActionsFor == null} label={pa && pa.ariaLabel ? 'Mais ações · ' + pa.ariaLabel.replace(/^(Abrir|Detalhar|Editar) /, '') : 'Mais ações'} />}
                       </div>
                     </td>

@@ -157,10 +157,10 @@ export function ResultBadge({ divergences, size }) {
 }
 
 /** Profile badge (Administrador | Auditor | Gestor). */
-export function ProfileBadge({ profile }) {
-  if (profile === 'admin') return <Badge tone="accent" icon="shield-check">Administrador</Badge>;
-  if (profile === 'gestor') return <Badge tone="outline" icon="chart-column">Gestor</Badge>;
-  return <Badge tone="outline" icon="user">Auditor</Badge>;
+export function ProfileBadge({ profile, children, size }) {
+  if (profile === 'admin') return <Badge tone="accent" icon="shield-check" size={size}>{children || 'Administrador'}</Badge>;
+  if (profile === 'gestor') return <Badge tone="outline" icon="chart-column" size={size}>{children || 'Gestor'}</Badge>;
+  return <Badge tone="outline" icon="user" size={size}>{children || 'Auditor'}</Badge>;
 }
 
 /**

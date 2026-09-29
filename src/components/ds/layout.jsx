@@ -59,7 +59,7 @@ export function Sidebar({ nav = [], active, onNavigate, onNewAudit, onBrand }) {
     <aside className="cs-sidebar" aria-label="Navegação principal">
       <Brand onClick={onBrand} />
       <nav className="cs-nav" aria-label="Seções">
-        {nav.map((it, i) => it.group ? <div key={i} className="cs-nav__group" role="presentation">{it.group}</div> : (
+        {nav.filter((it) => it.sidebar !== false).map((it, i) => it.group ? <div key={i} className="cs-nav__group" role="presentation">{it.group}</div> : (
           <NavItem key={it.id} item={it} active={active === it.id} onClick={() => onNavigate && onNavigate(it.id)} collapsed={collapsed} />
         ))}
       </nav>
