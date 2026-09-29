@@ -1,0 +1,18 @@
+<!-- @dsCard group="Navegação" height=247 subtitle="Abas sublinhadas (referência: Income | Expanse). Setas ←/→ navegam; contador opcional; preenchidas no mobile" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tabs — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Tabs } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 28 } }, /* @__PURE__ */ React.createElement(Tabs, { label: "Auditorias", tabs: [{ id: "lista", label: "Minhas auditorias", count: 24 }, { id: "nova", label: "Nova auditoria", icon: "plus" }] }), /* @__PURE__ */ React.createElement(Tabs, { label: "Estatística", defaultValue: "exp", tabs: [{ id: "inc", label: "Produção" }, { id: "exp", label: "Repasse" }, { id: "dif", label: "Diferenças", count: 37 }, { id: "x", label: "Histórico", disabled: true }] }), /* @__PURE__ */ React.createElement("div", { style: { width: 358 } }, /* @__PURE__ */ React.createElement(Tabs, { fill: true, label: "Mobile", tabs: [{ id: "lista", label: "Minhas auditorias", count: 24 }, { id: "nova", label: "Nova auditoria" }] })))
+);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!-- @dsCard group="Indicadores" height=500 subtitle="KPIs secundários: ícone (tom só no ícone), rótulo, valor tabular, variação com seta e contexto. Agrupados num card, como 'AI Enhancements'" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>KpiCard — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Card, KpiGroup, KpiCard } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement(Card, { title: "Resumo do período", subtitle: "24 auditorias processadas", style: { maxWidth: 620 } }, /* @__PURE__ */ React.createElement(KpiGroup, null, /* @__PURE__ */ React.createElement(KpiCard, { label: "Concluídas", value: "24", icon: "clipboard-check", delta: { value: "+3", direction: "up", good: true, label: "vs. período anterior" }, hint: "vs. 21 no período anterior" }), /* @__PURE__ */ React.createElement(KpiCard, { label: "Com divergência", value: "9", icon: "triangle-alert", tone: "danger", delta: { value: "+2", direction: "up", good: false, label: "vs. período anterior" }, hint: "37,5% das auditorias" }), /* @__PURE__ */ React.createElement(KpiCard, { label: "Divergências", value: "212", icon: "list-checks", delta: { value: "−4%", direction: "down", good: true }, hint: "média de 23,6 por auditoria" }))), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row", style: { alignItems: "stretch" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 220 } }, /* @__PURE__ */ React.createElement(KpiCard, { variant: "card", label: "Relatórios IA", value: "6", icon: "sparkles", tone: "ia", hint: "de 9 auditorias com divergência" })), /* @__PURE__ */ React.createElement("div", { style: { width: 220 } }, /* @__PURE__ */ React.createElement(KpiCard, { variant: "card", label: "Conformidade", value: "62,5%", icon: "scale", tone: "success", hint: "15 de 24 conformes" }))))
+);
+})();
+</script>
+</body>
+</html>

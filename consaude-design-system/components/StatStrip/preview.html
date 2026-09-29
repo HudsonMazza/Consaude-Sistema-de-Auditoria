@@ -1,0 +1,24 @@
+<!-- @dsCard group="Indicadores" height=311 subtitle="Faixa compacta de KPIs para telas secundárias (listas, usuários) — menos peso que o dashboard. Vira 2×2 no mobile" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>StatStrip — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { StatStrip } = C;
+const items = [
+  { label: "Auditorias salvas", value: "24", icon: "clipboard-check" },
+  { label: "Com divergências", value: "9", sub: "37,5%", icon: "triangle-alert", tone: "danger" },
+  { label: "Divergências", value: "212", icon: "list-checks" },
+  { label: "Relatórios IA", value: "6", icon: "sparkles", tone: "ia" }
+];
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement(StatStrip, { items }), /* @__PURE__ */ React.createElement("div", { style: { width: 358 } }, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Mobile"), /* @__PURE__ */ React.createElement(StatStrip, { compact: true, items })))
+);
+})();
+</script>
+</body>
+</html>

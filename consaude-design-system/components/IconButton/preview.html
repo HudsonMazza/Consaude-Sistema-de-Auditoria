@@ -1,0 +1,18 @@
+<!-- @dsCard group="Ações" height=144 subtitle="Só-ícone com rótulo acessível obrigatório (aria-label + tooltip). Ghost, secundário, primário redondo; 32 e 40px (44px de toque no mobile)" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>IconButton — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { IconButton } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 16 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(IconButton, { icon: "ellipsis", label: "Mais ações" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "copy", label: "Copiar resumo" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "x", label: "Fechar" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "sun", label: "Usar tema claro" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "ellipsis", label: "Mais ações", variant: "secondary", round: true }), /* @__PURE__ */ React.createElement(IconButton, { icon: "download", label: "Baixar", variant: "secondary" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "plus", label: "Nova auditoria", variant: "primary" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "list-filter", label: "Filtros", "aria-pressed": "true" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "chevron-left", label: "Anterior", disabled: true })), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(IconButton, { icon: "ellipsis", label: "Mais ações", size: "sm" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "copy", label: "Copiar", size: "sm" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "trash-2", label: "Remover arquivo", size: "sm" }), /* @__PURE__ */ React.createElement(IconButton, { icon: "refresh-cw", label: "Tentar de novo", size: "sm", loading: true })))
+);
+})();
+</script>
+</body>
+</html>

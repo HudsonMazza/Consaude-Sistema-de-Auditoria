@@ -1,0 +1,18 @@
+<!-- @dsCard group="Navegação" height=600 subtitle="Desktop: breadcrumb, busca global (/), tema, conta com menu. Mobile: marca ou voltar + título, avatar" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Topbar — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Topbar, ViewportProvider } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 32 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Desktop"), /* @__PURE__ */ React.createElement("div", { className: "cs-app", style: { display: "block", minHeight: 0, borderRadius: 14, boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Topbar, { crumbs: [{ label: "Auditorias" }, { label: "Setembro/2026" }] }))), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row", style: { alignItems: "flex-start", gap: 24 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Mobile · página principal"), /* @__PURE__ */ React.createElement(ViewportProvider, { value: { width: 390, bucket: "sm", compact: true } }, /* @__PURE__ */ React.createElement("div", { className: "cs-app", "data-layout": "compact", style: { display: "block", minHeight: 0, width: 390, borderRadius: 14, overflow: "hidden", boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Topbar, { crumbs: [{ label: "Dashboard" }] })))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Mobile · página de detalhe"), /* @__PURE__ */ React.createElement(ViewportProvider, { value: { width: 390, bucket: "sm", compact: true } }, /* @__PURE__ */ React.createElement("div", { className: "cs-app", "data-layout": "compact", style: { display: "block", minHeight: 0, width: 390, borderRadius: 14, overflow: "hidden", boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Topbar, { crumbs: [{ label: "Auditorias" }, { label: "Setembro/2026" }], back: { label: "Voltar para auditorias" } }))))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Menu da conta aberto"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-start", paddingLeft: 180 } }, /* @__PURE__ */ React.createElement(C.AccountMenu, { defaultOpen: true, autoFocus: false }))))
+);
+})();
+</script>
+</body>
+</html>

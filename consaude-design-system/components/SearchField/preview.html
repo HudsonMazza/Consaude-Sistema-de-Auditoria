@@ -1,0 +1,18 @@
+<!-- @dsCard group="Filtros e campos" height=144 subtitle="Busca com ícone, limpar (Esc também limpa) e atalho. Pílula compacta na topbar" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SearchField — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { SearchField } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 16 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-grid" }, /* @__PURE__ */ React.createElement(SearchField, { placeholder: "Buscar referência, arquivo ou auditor" }), /* @__PURE__ */ React.createElement(SearchField, { placeholder: "Buscar médico", defaultValue: "Ricardo" })), /* @__PURE__ */ React.createElement("div", { style: { width: 280 } }, /* @__PURE__ */ React.createElement(SearchField, { placeholder: "Buscar auditoria ou médico", size: "sm", pill: true, shortcut: "/" })))
+);
+})();
+</script>
+</body>
+</html>

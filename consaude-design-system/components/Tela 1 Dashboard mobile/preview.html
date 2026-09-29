@@ -1,0 +1,19 @@
+<!-- @dsCard group="Telas" page width=1360 height=960 subtitle="Dashboard · mobile 390px — mesmo código: KPIs 2×2, filtros em chips, lista em cards, bottom nav com Nova auditoria" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dashboard mobile — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { DashboardScreen } = C.screens;
+const { Device } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-devices" }, /* @__PURE__ */ React.createElement(Device, { caption: "Topo: KPI herói e resumo 2×2" }, /* @__PURE__ */ React.createElement(DashboardScreen, null)), /* @__PURE__ */ React.createElement(Device, { caption: "Gráfico e direção dos desvios", scrollTo: 760 }, /* @__PURE__ */ React.createElement(DashboardScreen, null)), /* @__PURE__ */ React.createElement(Device, { caption: "Últimas auditorias em cards", scrollTo: 1480 }, /* @__PURE__ */ React.createElement(DashboardScreen, null)))
+);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!-- @dsCard group="Navegação" height=448 subtitle="Título, subtítulo/metadados e ações. No mobile a ação primária fica visível e as demais vão para o menu ⋯" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PageHeader — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { PageHeader, Button, ResultBadge, Icon, SegmentedControl, ViewportProvider } = C;
+const secondary = [{ label: "Exportar Excel", icon: "file-spreadsheet", variant: "export" }, { label: "Copiar resumo", icon: "copy" }];
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 28 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-app", style: { display: "block", minHeight: 0, background: "transparent" } }, /* @__PURE__ */ React.createElement(PageHeader, { title: "Dashboard", subtitle: "Visão geral das auditorias da clínica", extra: /* @__PURE__ */ React.createElement(SegmentedControl, { label: "Período", defaultValue: "6", options: [{ id: "3", label: "3 meses" }, { id: "6", label: "6 meses" }, { id: "12", label: "12 meses" }] }), primary: /* @__PURE__ */ React.createElement(Button, { variant: "primary", icon: "plus" }, "Nova auditoria") })), /* @__PURE__ */ React.createElement("div", { className: "cs-app", style: { display: "block", minHeight: 0, background: "transparent" } }, /* @__PURE__ */ React.createElement(
+    PageHeader,
+    {
+      eyebrow: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Icon, { name: "file-search", size: 14 }), "Relatório de auditoria"),
+      title: "Setembro/2026",
+      badge: /* @__PURE__ */ React.createElement(ResultBadge, { divergences: 37 }),
+      meta: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement(Icon, { name: "calendar" }), "Processada em 26/09/2026 às 14:32"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement(Icon, { name: "user" }), "Ana Paula Lima")),
+      secondary,
+      primary: /* @__PURE__ */ React.createElement(Button, { variant: "ia" }, "Relatório IA")
+    }
+  )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Mobile (390px)"), /* @__PURE__ */ React.createElement(ViewportProvider, { value: { width: 390, bucket: "sm", compact: true } }, /* @__PURE__ */ React.createElement("div", { className: "cs-app", "data-layout": "compact", style: { display: "block", minHeight: 0, width: 390, padding: "0 16px 16px", borderRadius: 14, boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(PageHeader, { title: "Setembro/2026", badge: /* @__PURE__ */ React.createElement(ResultBadge, { divergences: 37, size: "sm" }), meta: /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement(Icon, { name: "calendar" }), "26/09/2026 · Ana Paula Lima"), secondary, primary: /* @__PURE__ */ React.createElement(Button, { variant: "ia" }, "Relatório IA") })))))
+);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!-- @dsCard group="Filtros e campos" height=160 subtitle="2–4 opções exclusivas que trocam a visão (período, gráfico/tabela, formato). Ocupa a largura toda em formulários" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SegmentedControl — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { SegmentedControl } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 20 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row", style: { gap: 24 } }, /* @__PURE__ */ React.createElement(SegmentedControl, { label: "Período", defaultValue: "6", options: [{ id: "3", label: "3 meses" }, { id: "6", label: "6 meses" }, { id: "12", label: "12 meses" }] }), /* @__PURE__ */ React.createElement(SegmentedControl, { label: "Visualização", options: [{ id: "chart", label: "Gráfico", icon: "chart-column" }, { id: "table", label: "Tabela", icon: "list-checks" }] })), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 360 } }, /* @__PURE__ */ React.createElement(SegmentedControl, { block: true, label: "Formato padrão de exportação", options: [{ id: "xlsx", label: "Excel", icon: "file-spreadsheet" }, { id: "pdf", label: "PDF", icon: "file-text" }] })))
+);
+})();
+</script>
+</body>
+</html>

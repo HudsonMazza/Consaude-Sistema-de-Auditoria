@@ -1,0 +1,17 @@
+<!-- @dsCard group="Sobreposições" height=388 subtitle="Confirmação destrutiva: nomeia o objeto, diz o que se perde, foco inicial em Cancelar e ação destrutiva por último" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ConfirmDialog — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { ConfirmDialog } = C;
+root.render(/* @__PURE__ */ React.createElement("div", { style: { height: 380 } }, /* @__PURE__ */ React.createElement(ConfirmDialog, { autoFocus: false, onClose: () => {
+}, title: "Excluir a auditoria Setembro/2026?", description: "Os 37 itens divergentes, os status de revisão e o relatório IA serão apagados. Os arquivos originais não são afetados.", confirmLabel: "Excluir auditoria" })));
+})();
+</script>
+</body>
+</html>

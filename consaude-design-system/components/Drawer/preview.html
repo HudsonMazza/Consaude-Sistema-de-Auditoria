@@ -1,0 +1,17 @@
+<!-- @dsCard group="Sobreposições" height=768 subtitle="Painel lateral de 520px (detalhe do médico). No mobile vira tela cheia com voltar. Foco preso, Esc fecha, rodapé com ações" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Drawer — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { DoctorDrawer } = C.screens;
+root.render(/* @__PURE__ */ React.createElement("div", { style: { height: 760 } }, /* @__PURE__ */ React.createElement(DoctorDrawer, { onClose: () => {
+} })));
+})();
+</script>
+</body>
+</html>

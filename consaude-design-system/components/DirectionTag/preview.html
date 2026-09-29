@@ -1,0 +1,18 @@
+<!-- @dsCard group="Dados" height=144 subtitle="Direção do desvio por seta + palavra (não só cor): ↗ Repasse maior (pago a mais) · ↙ Produção maior (pago a menos). Célula de diferença" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DirectionTag — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { DirectionTag, DiffValue } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(DirectionTag, { direction: "rep" }), /* @__PURE__ */ React.createElement(DirectionTag, { direction: "prod" }), /* @__PURE__ */ React.createElement(DirectionTag, { direction: "rep", short: true }), /* @__PURE__ */ React.createElement(DirectionTag, { direction: "prod", short: true }), /* @__PURE__ */ React.createElement(DirectionTag, { direction: "rep", plain: true, short: true }), /* @__PURE__ */ React.createElement(DirectionTag, { direction: "prod", plain: true, short: true })), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row", style: { gap: 48 } }, /* @__PURE__ */ React.createElement(DiffValue, { value: 1732.4 }), /* @__PURE__ */ React.createElement(DiffValue, { value: -2130 }), /* @__PURE__ */ React.createElement(DiffValue, { value: 765 })))
+);
+})();
+</script>
+</body>
+</html>

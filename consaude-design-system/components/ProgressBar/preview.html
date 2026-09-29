@@ -1,0 +1,18 @@
+<!-- @dsCard group="Indicadores" height=292 subtitle="Progresso linear com rótulo e valor; tons semânticos; indeterminado quando não há estimativa" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ProgressBar — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { ProgressBar } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { maxWidth: 560 } }, /* @__PURE__ */ React.createElement(ProgressBar, { label: "Revisão da auditoria", value: 6, max: 11, valueLabel: "6 de 11 médicos" }), /* @__PURE__ */ React.createElement(ProgressBar, { label: "Upload do repasse", value: 100, tone: "success", valueLabel: "Concluído" }), /* @__PURE__ */ React.createElement(ProgressBar, { label: "Uso da tolerância", value: 82, tone: "warning" }), /* @__PURE__ */ React.createElement(ProgressBar, { label: "Lendo planilha…", indeterminate: true, valueLabel: "" }), /* @__PURE__ */ React.createElement(ProgressBar, { size: "sm", value: 40, label: "Compacta" }))
+);
+})();
+</script>
+</body>
+</html>

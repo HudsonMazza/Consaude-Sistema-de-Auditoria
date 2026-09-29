@@ -1,0 +1,33 @@
+<!-- @dsCard group="Sobreposições" height=608 subtitle="Diálogo centralizado (bottom sheet no mobile). Título, descrição, conteúdo, rodapé com ação primária à direita. Foco preso e devolvido" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Modal — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Modal, Button, TextField, SelectField, Callout } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { style: { height: 600 } }, /* @__PURE__ */ React.createElement(
+    Modal,
+    {
+      title: "Novo usuário",
+      description: "Enviaremos um convite por e-mail para criar a senha.",
+      icon: "user-plus",
+      autoFocus: false,
+      onClose: () => {
+      },
+      footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Button, { variant: "secondary" }, "Cancelar"), /* @__PURE__ */ React.createElement(Button, { variant: "primary", icon: "mail" }, "Enviar convite"))
+    },
+    /* @__PURE__ */ React.createElement(TextField, { label: "Nome completo", placeholder: "Ex.: Camila Rocha" }),
+    /* @__PURE__ */ React.createElement(TextField, { label: "E-mail", type: "email", placeholder: "nome@clinica.com.br", prefixIcon: "mail" }),
+    /* @__PURE__ */ React.createElement(SelectField, { label: "Perfil", options: [{ value: "auditor", label: "Auditor — cria e revisa auditorias" }, { value: "admin", label: "Administrador — também gerencia usuários" }] }),
+    /* @__PURE__ */ React.createElement(Callout, { tone: "neutral" }, "O convite expira em 7 dias.")
+  ))
+);
+})();
+</script>
+</body>
+</html>
