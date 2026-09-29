@@ -12,6 +12,7 @@ import {
 import {
   observarHistorico, salvarAuditoria, salvarRelatorioIA, excluirAuditoria, migrarHistoricoLocal,
 } from "./src/audits";
+import { matchesAuditScope, summarizeAudits } from "./src/dashboard";
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -987,6 +988,24 @@ function PageHeader({ t, title, subtitle, right }) {
   );
 }
 
+function AuditSectionNav({ t, dark, view, onList, onNew }) {
+  const items = [
+    ['list', 'Minhas auditorias', onList],
+    ['new', 'Nova auditoria', onNew],
+  ];
+  return (
+    <nav aria-label="Seções de auditorias" style={{ display:'flex', gap:4, marginBottom:22, borderBottom:`1px solid ${t.border}` }}>
+      {items.map(([id, label, action]) => {
+        const active = id === view;
+        return <button key={id} type="button" onClick={action} aria-current={active?'page':undefined}
+          style={{ border:0, borderBottom:`2px solid ${active?'#F47920':'transparent'}`, background:'transparent', color:active?'#F47920':t.muted, padding:'0 12px 11px', fontFamily:'inherit', fontSize:12.5, fontWeight:active?700:600, cursor:'pointer' }}>
+          {label}
+        </button>;
+      })}
+    </nav>
+  );
+}
+
 // Campo de formulário: rótulo + conteúdo + dica opcional.
 function Field({ t, label, hint, htmlFor, children, style }) {
   return (
@@ -1228,9 +1247,8 @@ function Drawer({ t, title, subtitle, onClose, children }) {
 
 function getNavItems(role) {
   return [
-    { id: "upload",        label: "Dashboard",     icon: ICONS.dashboard },
+    { id: "dashboard",     label: "Dashboard",     icon: ICONS.dashboard },
     { id: "audits",        label: "Auditorias",    icon: ICONS.audit },
-    { id: "history",       label: "Histórico",     icon: ICONS.history },
     ...(role === 'admin' ? [{ id: "users", label: "Usuários", icon: ICONS.users }] : []),
     { id: "settings-page", label: "Configurações", icon: ICONS.settings },
   ];
@@ -1242,7 +1260,8 @@ export default function App() {
   const [authReady,     setAuthReady]     = useState(false);
   const [dark,          setDark]          = useState(true);
   const [sidebarOpen,   setSidebarOpen]   = useState(() => typeof window === 'undefined' || window.innerWidth > 768);
-  const [activePage,    setActivePage]    = useState("upload");
+  const [activePage,    setActivePage]    = useState("dashboard");
+  const [auditView,     setAuditView]     = useState("list");
   const [file1,         setFile1]         = useState(null);
   const [file2,         setFile2]         = useState(null);
   const [drag1,         setDrag1]         = useState(false);
@@ -1283,7 +1302,8 @@ export default function App() {
   const handleLogout = async () => {
     try { await logout(); } catch { /* segue com a limpeza local */ }
     setCurrentUser(null);
-    setActivePage("upload");
+    setActivePage("dashboard");
+    setAuditView("list");
     setResultados(null);
     setHistorico([]);
     setFile1(null);
@@ -1505,6 +1525,14 @@ export default function App() {
     catch { setHistWarning("Não foi possível excluir este registro. Tente novamente."); }
   };
 
+  const startNewAudit = () => {
+    setActivePage("audits");
+    setAuditView("new");
+    setFile1(null);
+    setFile2(null);
+    setUploadError(null);
+  };
+
   const t = dark ? themes.dark : themes.light;
   const navItems = getNavItems(currentUser?.role);
   const activeNavItem = navItems.find(item => item.id === activePage || (activePage === 'results' && item.id === 'audits'));
@@ -1556,6 +1584,7 @@ export default function App() {
         .ai-card{position:relative;overflow:hidden}
         .checkbox-custom{width:18px;height:18px;border-radius:5px;border:2px solid ${dark?"#475569":"#cbd5e1"};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s ease;cursor:pointer}
         .checkbox-custom.checked{background:#F47920;border-color:#F47920}
+        @media(max-width:980px){.dashboard-grid{grid-template-columns:1fr!important}}
         @media(max-width:768px){
           .sidebar{transform:translateX(-100%);position:fixed!important;z-index:200;transition:transform .3s ease!important}
           .sidebar.open{transform:translateX(0)!important}
@@ -1653,7 +1682,11 @@ export default function App() {
             return (
               <button key={item.id} type="button"
                 className={`shell-nav-button nav-item ${isActive?"active":""}`}
-                onClick={() => { setActivePage(item.id); if(window.innerWidth<=768) setSidebarOpen(false); }}
+                onClick={() => {
+                  setActivePage(item.id);
+                  if (item.id === 'audits') setAuditView('list');
+                  if (window.innerWidth <= 768) setSidebarOpen(false);
+                }}
                 aria-current={isActive?'page':undefined}
                 aria-label={sidebarOpen?undefined:item.label}
                 title={sidebarOpen?undefined:item.label}
@@ -1729,7 +1762,11 @@ export default function App() {
         <main className="app-main">
           {processing ? (
             <ProcessingScreen dark={dark} t={t} steps={steps} progress={progress} />
-          ) : activePage==="upload" ? (
+          ) : activePage==="dashboard" ? (
+            <DashboardScreen dark={dark} t={t} historico={historico} currentUser={currentUser}
+              onNewAudit={startNewAudit}
+              onOpen={(entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); }} />
+          ) : activePage==="audits" && auditView === "new" ? (
             <UploadScreen
               dark={dark} t={t}
               file1={file1} file2={file2}
@@ -1744,8 +1781,9 @@ export default function App() {
               uploadError={uploadError}
               cols1={cols1} cols2={cols2}
               periodoAuditoria={periodoAuditoria} setPeriodoAuditoria={setPeriodoAuditoria}
+              onShowAudits={() => setAuditView('list')}
             />
-          ) : activePage==="results"||activePage==="audits" ? (
+          ) : activePage==="results" ? (
             <ResultsScreen
               dark={dark} t={t}
               selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}
@@ -1760,12 +1798,12 @@ export default function App() {
                 const txt = `Auditoria ${resultados.referencia}\n${resultados.medicosComDivergencia} médicos com divergência — Valor total: ${resultados.valorTotal}`;
                 navigator.clipboard?.writeText(txt);
               }}
-              onNewAudit={() => { setActivePage("upload"); setFile1(null); setFile2(null); setUploadError(null); }}
+              onNewAudit={startNewAudit}
             />
-          ) : activePage==="history" ? (
+          ) : activePage==="audits" ? (
             <HistoryScreen dark={dark} t={t} historico={historico} currentUser={currentUser}
               onOpen={(entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); }}
-              onDelete={handleDeleteAudit} />
+              onDelete={handleDeleteAudit} onNewAudit={startNewAudit} />
           ) : activePage==="users" ? (
             <UserManagementPage dark={dark} t={t} currentUser={currentUser} />
           ) : activePage==="profile" ? (
@@ -2048,7 +2086,7 @@ function FirebaseSetupScreen() {
 }
 
 // ─── UPLOAD SCREEN ────────────────────────────────────────────────────────────
-function UploadScreen({ dark, t, file1, file2, setFile1, setFile2, drag1, drag2, setDrag1, setDrag2, handleFileDrop, handleFileSelect, advancedOpen, setAdvancedOpen, configs, setConfigs, startAudit, uploadError, cols1, cols2, periodoAuditoria, setPeriodoAuditoria }) {
+function UploadScreen({ dark, t, file1, file2, setFile1, setFile2, drag1, drag2, setDrag1, setDrag2, handleFileDrop, handleFileSelect, advancedOpen, setAdvancedOpen, configs, setConfigs, startAudit, uploadError, cols1, cols2, periodoAuditoria, setPeriodoAuditoria, onShowAudits }) {
   const canStart = file1 && file2;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
@@ -2058,6 +2096,7 @@ function UploadScreen({ dark, t, file1, file2, setFile1, setFile2, drag1, drag2,
 
   return (
     <div className="app-page-medium fade-in">
+      <AuditSectionNav t={t} dark={dark} view="new" onList={onShowAudits} onNew={() => {}} />
       <PageHeader t={t} title="Nova auditoria"
         subtitle="Prepare os relatórios de produção e repasse para iniciar a comparação."
         right={
@@ -2584,16 +2623,97 @@ function EmptyState({ t, mensagem, sub }) {
 }
 
 // ─── HISTORY SCREEN ───────────────────────────────────────────────────────────
-function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
+function MonthlyChart({ t, dark, months }) {
+  const max = Math.max(...months.map(item => item.audits), 1);
+  const description = months.map(item => `${item.label}: ${item.audits}`).join(', ');
+  return (
+    <div role="img" aria-label={`Auditorias concluídas por mês. ${description}.`} style={{ height:190, display:'grid', gridTemplateColumns:`repeat(${months.length}, minmax(28px, 1fr))`, gap:10, alignItems:'end', padding:'12px 2px 0' }}>
+      {months.map((item) => (
+        <div key={item.key} style={{ height:'100%', display:'flex', flexDirection:'column', justifyContent:'end', alignItems:'center', gap:7 }}>
+          <span style={{ fontSize:11, color:item.audits?t.text:t.muted, fontWeight:700 }}>{item.audits || ''}</span>
+          <div title={`${item.label}: ${item.audits} auditoria(s)`} style={{ width:'100%', maxWidth:38, minHeight:5, height:`${Math.max(5, (item.audits / max) * 132)}px`, background:item.audits?'#F47920':(dark?'#24344d':'#e2e8f0'), borderRadius:'5px 5px 2px 2px' }} />
+          <span style={{ fontSize:10.5, color:t.muted, textTransform:'capitalize' }}>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecentAuditsPanel({ dark, t, audits, onOpen }) {
+  const latest = audits.slice(0, 5);
+  return (
+    <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg, overflow:'hidden' }}>
+      <div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}>
+        <div><div className="ui-panel-title" style={{ color:t.text }}>Últimas auditorias</div><div className="ui-panel-copy" style={{ color:t.muted }}>Abra um resultado para continuar a revisão ou exportar.</div></div>
+        <Button t={t} dark={dark} variant="ghost" size="sm" onClick={() => onOpen(latest[0])}>Abrir última</Button>
+      </div>
+      <div className="ui-table-wrap">
+        <table className="ui-table" style={{ minWidth:680 }}>
+          <thead style={{ background:dark?'#0f172a':'#f8fafc' }}><tr>{['Referência', 'Data', 'Resultado', 'Valor', 'Ação'].map(label => <th key={label} style={{ color:t.muted }}>{label}</th>)}</tr></thead>
+          <tbody>{latest.map(audit => <tr key={audit.id} className="table-row" style={{ borderTop:`1px solid ${t.border}` }}><td style={{ color:t.text, fontWeight:650 }}>{audit.periodo || 'Sem referência'}</td><td style={{ color:t.muted }}>{audit.data || '—'}</td><td><span className="badge" style={{ background:Number(audit.divergencias)>0?'#dc262616':'#05966916', color:Number(audit.divergencias)>0?'#dc2626':'#059669' }}>{Number(audit.divergencias)>0 ? `${audit.divergencias} divergência(s)` : 'Conforme'}</span></td><td style={{ color:t.text, fontWeight:650 }}>{audit.valor || '—'}</td><td><Button t={t} dark={dark} variant="subtle" size="sm" onClick={() => onOpen(audit)}>{ICONS.eye} Abrir</Button></td></tr>)}</tbody>
+        </table>
+      </div>
+      <div className="ui-mobile-list">{latest.map(audit => <article key={audit.id} className="ui-mobile-card" style={{ border:`1px solid ${t.border}`, background:dark?'rgba(255,255,255,.018)':'#fff' }}><div className="ui-mobile-head"><div><div style={{ fontSize:13.5, fontWeight:700, color:t.text }}>{audit.periodo || 'Auditoria sem referência'}</div><div style={{ fontSize:11, color:t.muted, marginTop:3 }}>{audit.data || '—'}</div></div><span className="badge" style={{ background:Number(audit.divergencias)>0?'#dc262616':'#05966916', color:Number(audit.divergencias)>0?'#dc2626':'#059669' }}>{Number(audit.divergencias)>0 ? `${audit.divergencias} divergência(s)` : 'Conforme'}</span></div><div className="ui-mobile-meta"><div><div className="ui-mobile-label" style={{ color:t.muted }}>Valor divergente</div><div className="ui-mobile-value" style={{ color:t.text, fontWeight:650 }}>{audit.valor || '—'}</div></div></div><Button t={t} dark={dark} variant="subtle" size="sm" fullWidth onClick={() => onOpen(audit)}>{ICONS.eye} Abrir auditoria</Button></article>)}</div>
+    </section>
+  );
+}
+
+function DashboardScreen({ dark, t, historico, currentUser, onNewAudit, onOpen }) {
+  const isAdmin = currentUser?.role === 'admin';
+  const [months, setMonths] = useState(6);
+  const [scope, setScope] = useState(isAdmin ? 'all' : currentUser?.id);
+  const auditors = [...new Map(historico.map(row => [row.userId, row.userName || 'Usuário sem nome'])).entries()]
+    .filter(([id]) => id).map(([id, name]) => ({ id, name }));
+  const summary = summarizeAudits(historico, { months, userId:isAdmin ? scope : currentUser?.id });
+  const stats = [
+    { label:'Auditorias concluídas', value:summary.metrics.audits, detail:months === 1 ? 'Último mês' : `Últimos ${months} meses`, icon:ICONS.audit, color:'#2563eb' },
+    { label:'Com divergências', value:summary.metrics.auditsWithDifferences, detail:`${summary.metrics.differenceRate}% das auditorias`, icon:ICONS.alert, color:'#d97706' },
+    { label:'Divergências encontradas', value:summary.metrics.totalDifferences, detail:'Registros para revisão', icon:ICONS.trending, color:'#dc2626' },
+    { label:'Valor divergente', value:brl(summary.metrics.divergentValue), detail:'Soma no período', icon:ICONS.dollar, color:'#059669' },
+  ];
+  const directionTotal = summary.direction.rep_maior + summary.direction.prod_maior;
+
+  return (
+    <div className="app-page fade-in">
+      <PageHeader t={t} title="Dashboard" subtitle="Acompanhe o volume e os desvios identificados nas auditorias concluídas."
+        right={<Button t={t} dark={dark} onClick={onNewAudit}>{ICONS.plus} Nova auditoria</Button>} />
+      <section aria-label="Filtros do dashboard" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg, padding:16, marginBottom:18, display:'flex', alignItems:'end', gap:14, flexWrap:'wrap' }}>
+        <Field t={t} label="Período" htmlFor="dashboard-period" style={{ minWidth:190 }}><SelectInput id="dashboard-period" t={t} dark={dark} value={months} onChange={event => setMonths(Number(event.target.value))}><option value={3}>Últimos 3 meses</option><option value={6}>Últimos 6 meses</option><option value={12}>Últimos 12 meses</option></SelectInput></Field>
+        {isAdmin && <Field t={t} label="Auditorias" htmlFor="dashboard-scope" style={{ minWidth:240 }}><SelectInput id="dashboard-scope" t={t} dark={dark} value={scope} onChange={event => setScope(event.target.value)}><option value="all">Clínica inteira</option><option value={currentUser.id}>Minhas auditorias</option>{auditors.filter(auditor => auditor.id !== currentUser.id).map(auditor => <option key={auditor.id} value={auditor.id}>{auditor.name}</option>)}</SelectInput></Field>}
+      </section>
+      <div className="ui-stat-grid" aria-label="Indicadores do período">{stats.map(stat => <article key={stat.label} className="ui-stat" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}><div className="ui-stat-top"><div className="ui-stat-icon" style={{ color:stat.color, background:`${stat.color}14` }}>{stat.icon}</div><div className="ui-stat-value" style={{ color:t.text, fontSize:typeof stat.value === 'string' ? 20 : undefined }}>{stat.value}</div></div><div><div className="ui-stat-label" style={{ color:t.text }}>{stat.label}</div><div className="ui-stat-detail" style={{ color:t.muted }}>{stat.detail}</div></div></article>)}</div>
+      {summary.audits.length === 0 ? (
+        <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg, marginTop:18 }}><EmptyState t={t} mensagem="Nenhuma auditoria neste período." sub="Altere os filtros ou inicie uma nova auditoria para ver análises aqui." /></section>
+      ) : (
+        <>
+          <div className="dashboard-grid" style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.35fr) minmax(280px, .65fr)', gap:18, marginTop:18 }}>
+            <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}><div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}><div><div className="ui-panel-title" style={{ color:t.text }}>Auditorias por mês</div><div className="ui-panel-copy" style={{ color:t.muted }}>Volume concluído no período filtrado.</div></div></div><div className="ui-panel-body"><MonthlyChart t={t} dark={dark} months={summary.months} /></div></section>
+            <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}><div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}><div><div className="ui-panel-title" style={{ color:t.text }}>Direção dos desvios</div><div className="ui-panel-copy" style={{ color:t.muted }}>Comparação entre produção e repasse.</div></div></div><div className="ui-panel-body" style={{ display:'grid', gap:18 }}>{[['Repasse maior', summary.direction.rep_maior, '#dc2626'], ['Produção maior', summary.direction.prod_maior, '#d97706']].map(([label, value, color]) => <div key={label}><div style={{ display:'flex', justifyContent:'space-between', gap:12, fontSize:12.5, marginBottom:7 }}><span style={{ color:t.text, fontWeight:650 }}>{label}</span><strong style={{ color }}>{value}</strong></div><div aria-hidden="true" style={{ height:9, background:dark?'#1e293b':'#e8edf4', borderRadius:4 }}><div style={{ width:`${directionTotal ? (value / directionTotal) * 100 : 0}%`, minWidth:value?8:0, height:'100%', background:color, borderRadius:4 }} /></div></div>)}</div></section>
+          </div>
+          <div className="dashboard-grid" style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.35fr) minmax(280px, .65fr)', gap:18, marginTop:18 }}>
+            <RecentAuditsPanel dark={dark} t={t} audits={summary.audits} onOpen={onOpen} />
+            <section className="ui-panel" style={{ ...t.card, border:`1px solid ${t.border}`, borderRadius:RADIUS.lg }}><div className="ui-panel-head" style={{ borderBottom:`1px solid ${t.border}` }}><div><div className="ui-panel-title" style={{ color:t.text }}>Maiores impactos</div><div className="ui-panel-copy" style={{ color:t.muted }}>Médicos com maior valor divergente.</div></div></div><div className="ui-panel-body" style={{ display:'grid', gap:12 }}>{summary.topDoctors.length ? summary.topDoctors.map((doctor, index) => <div key={doctor.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}><div style={{ minWidth:0 }}><div style={{ color:t.muted, fontSize:10.5, marginBottom:2 }}>#{index + 1}</div><div style={{ color:t.text, fontSize:12.5, fontWeight:650, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{doctor.name}</div></div><strong style={{ color:'#dc2626', fontSize:12.5, whiteSpace:'nowrap' }}>{brl(doctor.value)}</strong></div>) : <div style={{ color:t.muted, fontSize:12.5 }}>Sem divergências neste período.</div>}</div></section>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function HistoryScreen({ dark, t, historico, onOpen, onDelete, onNewAudit, currentUser }) {
   const isAdmin = currentUser?.role === 'admin';
   const [confirmDel, setConfirmDel] = useState(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [scope, setScope] = useState(isAdmin ? 'mine' : currentUser?.id);
   const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
-  const withDifferences = historico.filter(row => Number(row.divergencias) > 0);
-  const totalDifferences = historico.reduce((total, row) => total + (Number(row.divergencias) || 0), 0);
-  const withAI = historico.filter(row => row.aiReportHTML);
-  const visibleHistory = historico.filter((row) => {
+  const auditors = [...new Map(historico.map(row => [row.userId, row.userName || 'Usuário sem nome'])).entries()]
+    .filter(([id]) => id).map(([id, name]) => ({ id, name }));
+  const scopedHistory = historico.filter(row => !isAdmin || matchesAuditScope(row, scope, currentUser?.id));
+  const withDifferences = scopedHistory.filter(row => Number(row.divergencias) > 0);
+  const totalDifferences = scopedHistory.reduce((total, row) => total + (Number(row.divergencias) || 0), 0);
+  const withAI = scopedHistory.filter(row => row.aiReportHTML);
+  const visibleHistory = scopedHistory.filter((row) => {
     const matchesQuery = !normalizedQuery || [row.data, row.periodo, row.arquivos, row.userName]
       .some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery));
     const matchesFilter = filter === 'all'
@@ -2609,7 +2729,7 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
     ['ai', 'Com relatório IA'],
   ];
   const stats = [
-    { label:'Auditorias salvas', value:historico.length, detail:'Sincronizadas na nuvem', icon:ICONS.history, color:'#2563eb' },
+    { label:'Auditorias salvas', value:scopedHistory.length, detail:'Sincronizadas na nuvem', icon:ICONS.history, color:'#2563eb' },
     { label:'Com divergências', value:withDifferences.length, detail:'Requerem revisão', icon:ICONS.alert, color:'#d97706' },
     { label:'Divergências', value:totalDifferences, detail:'Total identificado', icon:ICONS.trending, color:'#dc2626' },
     { label:'Relatórios IA', value:withAI.length, detail:'Análises disponíveis', icon:ICONS.brain, color:'#059669' },
@@ -2646,7 +2766,8 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
 
   return (
     <div className="app-page fade-in">
-      <PageHeader t={t} title="Histórico de auditorias" subtitle="Consulte, exporte e reabra os relatórios da clínica, sincronizados na nuvem." />
+      <AuditSectionNav t={t} dark={dark} view="list" onList={() => {}} onNew={onNewAudit} />
+      <PageHeader t={t} title="Auditorias" subtitle="Consulte, exporte e reabra as auditorias concluídas." right={<Button t={t} dark={dark} onClick={onNewAudit}>{ICONS.plus} Nova auditoria</Button>} />
 
       <div className="ui-stat-grid" aria-label="Resumo do histórico">
         {stats.map(stat => (
@@ -2678,6 +2799,15 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
               </button>
             )}
           </div>
+          {isAdmin && (
+            <div style={{ minWidth:210 }}>
+              <SelectInput t={t} dark={dark} value={scope} aria-label="Filtrar auditorias por responsável" onChange={event => setScope(event.target.value)}>
+                <option value="mine">Minhas auditorias</option>
+                <option value="all">Auditorias da clínica</option>
+                {auditors.filter(auditor => auditor.id !== currentUser?.id).map(auditor => <option key={auditor.id} value={auditor.id}>{auditor.name}</option>)}
+              </SelectInput>
+            </div>
+          )}
           <div className="ui-toolbar-group" aria-label="Filtrar histórico">
             {filters.map(([value, label]) => {
               const selected = filter === value;
@@ -2691,14 +2821,14 @@ function HistoryScreen({ dark, t, historico, onOpen, onDelete, currentUser }) {
           </div>
         </div>
 
-        {historico.length>0 && (
+        {scopedHistory.length>0 && (
           <div className="ui-count-bar" style={{ color:t.muted, background:dark?'rgba(255,255,255,.015)':'rgba(15,23,42,.018)' }}>
-            Exibindo <strong style={{ color:t.text }}>{visibleHistory.length}</strong> de {historico.length} auditoria(s)
+            Exibindo <strong style={{ color:t.text }}>{visibleHistory.length}</strong> de {scopedHistory.length} auditoria(s)
           </div>
         )}
 
-        {historico.length===0 ? (
-          <EmptyState t={t} mensagem="Nenhuma auditoria realizada ainda." sub="Os relatórios gerados aparecerão aqui automaticamente após cada auditoria." />
+        {scopedHistory.length===0 ? (
+          <EmptyState t={t} mensagem="Nenhuma auditoria encontrada." sub="Conclua uma nova auditoria ou escolha outro responsável." />
         ) : visibleHistory.length===0 ? (
           <div style={{ padding:'44px 20px', textAlign:'center' }}>
             <div style={{ fontSize:14, fontWeight:700, color:t.text }}>Nenhuma auditoria encontrada</div>
