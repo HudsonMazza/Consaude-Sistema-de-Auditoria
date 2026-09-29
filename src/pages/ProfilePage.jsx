@@ -2,7 +2,7 @@
 import React, { useRef, useState } from 'react';
 import * as authApi from '../auth';
 import { lerFotoRedimensionada } from '../lib/photo.js';
-import { Button, Card, Avatar, IconButton, Spinner, ProfileBadge, StatusBadge, TextField, Checkbox, Callout, PageHeader } from '../components/ds/index.js';
+import { Button, Card, Avatar, Spinner, ProfileBadge, StatusBadge, TextField, Checkbox, Callout, PageHeader } from '../components/ds/index.js';
 import { useToast } from '../components/Toaster.jsx';
 
 export default function ProfilePage({ currentUser, onUpdateUser, deps = authApi }) {

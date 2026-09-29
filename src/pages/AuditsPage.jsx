@@ -99,7 +99,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
         <div className="cs-card-toolbar cs-card-toolbar--top">
           <div className="cs-toolbar">
             <div className="cs-toolbar__grow" style={compact ? { maxWidth: 'none', flexBasis: '100%' } : undefined}>
-              <SearchField placeholder="Buscar por período, arquivo ou auditor" label="Buscar auditorias" value={query} onChange={setQuery} />
+              <SearchField placeholder={compact ? "Buscar auditoria" : "Buscar por período, arquivo ou auditor"} label="Buscar auditorias" value={query} onChange={setQuery} />
             </div>
             {isAdmin && !compact && <SheetSelect label="Filtrar auditorias por responsável" icon="user" width={220} value={scope} onChange={setScope} options={scopeOptions} />}
             {!compact && <div className="cs-toolbar__end">{countLine}</div>}

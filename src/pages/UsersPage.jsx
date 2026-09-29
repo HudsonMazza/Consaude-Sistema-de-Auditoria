@@ -5,7 +5,7 @@ import * as authApi from '../auth';
 import { formatarData } from '../lib/clinicSettings.js';
 import {
   Button, Badge, Card, StatStrip, DataTable, Pagination, Avatar, StatusBadge, ProfileBadge, SearchField, FilterChips,
-  PageHeader, EmptyState, ErrorState, Modal, Callout, TextField, Checkbox, Icon, sortRows, formatNumber, useViewport,
+  PageHeader, EmptyState, ErrorState, Modal, Callout, TextField, Checkbox, sortRows, formatNumber, useViewport,
 } from '../components/ds/index.js';
 import { useToast } from '../components/Toaster.jsx';
 
@@ -202,7 +202,7 @@ export default function UsersPage({ currentUser, deps = authApi }) {
           <span className="cs-cell-main__sub cs-truncate" title={u.email}>{u.email || '—'}</span>
         </span>
       </span>) },
-    { key: 'cargo', header: 'Cargo', priority: 2, sortable: true, sortValue: (u) => String(u.cargo || ''), render: (u) => <span className="cs-muted">{u.cargo || '—'}</span> },
+    { key: 'cargo', header: 'Cargo', priority: 3, sortable: true, sortValue: (u) => String(u.cargo || ''), render: (u) => <span className="cs-muted">{u.cargo || '—'}</span> },
     { key: 'role', header: 'Perfil', sortable: true, sortValue: (u) => u.role, render: (u) => <ProfileBadge profile={u.role === 'admin' ? 'admin' : 'user'}>{u.role === 'admin' ? 'Administrador' : 'Usuário'}</ProfileBadge> },
     { key: 'status', header: 'Status', sortable: true, sortValue: statusFor, render: (u) => <StatusBadge status={statusFor(u)} /> },
     { key: 'created', header: 'Criado em', priority: 3, render: (u) => <span className="cs-num cs-muted">{formatarData(u.createdAt)}</span> },
@@ -220,9 +220,9 @@ export default function UsersPage({ currentUser, deps = authApi }) {
 
       <StatStrip items={[
         { label: 'Contas cadastradas', value: dash(users.length), icon: 'users' },
-        { label: 'Acessos ativos', value: dash(activeUsers.length), sub: !loading && users.length - activeUsers.length ? `${users.length - activeUsers.length} bloqueado(s)` : undefined, icon: 'circle-check', tone: 'success' },
+        { label: 'Acessos ativos', value: dash(activeUsers.length), sub: !loading && users.length - activeUsers.length ? `${users.length - activeUsers.length} ${users.length - activeUsers.length === 1 ? 'bloqueado' : 'bloqueados'}` : undefined, icon: 'circle-check', tone: 'success' },
         { label: 'Administradores', value: dash(adminUsers.length), icon: 'shield-check', tone: 'accent' },
-        { label: 'Requer atenção', value: dash(attentionUsers.length), sub: 'senha pendente ou desativada', icon: 'triangle-alert', tone: 'warning' },
+        { label: 'Requer atenção', value: dash(attentionUsers.length), icon: 'triangle-alert', tone: 'warning' },
       ]} />
 
       {loadError && users.length > 0 && (

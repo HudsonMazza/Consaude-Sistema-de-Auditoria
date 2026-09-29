@@ -175,6 +175,7 @@ export function ActionMenu({ items = [], label = 'Mais ações', title, trigger,
   const menu = useRef(null);
   const id = useId();
   const close = useCallback(() => setOpen(false), []);
+  useEffect(() => { if (!open) setPos(null); }, [open]);
   // Desktop: position a fixed popover from the trigger's rect (escapes overflow:auto tables), flip up near the bottom.
   React.useLayoutEffect(() => {
     if (!open || compact || !anchor.current) return;
@@ -194,10 +195,15 @@ export function ActionMenu({ items = [], label = 'Mais ações', title, trigger,
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', onScroll);
-    const first = menu.current && menu.current.querySelector('[role="menuitem"]:not([disabled])');
-    if (first && autoFocus) first.focus({ preventScroll: true });
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onScroll); };
   }, [open, compact]);
+  // Foca o primeiro item só depois de posicionado (antes disso o menu está com visibility:hidden e não recebe foco).
+  const placed = pos != null;
+  useEffect(() => {
+    if (!open || compact || !placed || !autoFocus) return;
+    const first = menu.current && menu.current.querySelector('[role="menuitem"]:not([disabled])');
+    if (first) first.focus({ preventScroll: true });
+  }, [open, compact, placed]);
   function onMenuKey(e) {
     const list = Array.from(menu.current.querySelectorAll('[role="menuitem"]:not([disabled])'));
     const i = list.indexOf(document.activeElement);

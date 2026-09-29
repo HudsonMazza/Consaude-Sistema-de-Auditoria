@@ -84,3 +84,8 @@ button, input, select, textarea { font-family: inherit; }
 .cs-skip { position: absolute; left: var(--space-4); top: -60px; z-index: var(--z-toast); padding: var(--space-2) var(--space-4); border-radius: var(--radius-full); background: var(--accent-fill); color: var(--on-accent); font: 500 14px/20px var(--font-sans); text-decoration: none; }
 .cs-skip:focus { top: var(--space-2); }
 .cs-content:focus { outline: none; }
+
+/* Mobile: o bloco de títulos do PageHeader ocupa a largura toda (senão metadados longos, como nomes de arquivo, não truncam). */
+.cs-app[data-layout="compact"] .cs-pagehead__titles { width: 100%; max-width: 100%; }
+.cs-pagehead__meta > span { max-width: 100%; }
+.cs-stat__value small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

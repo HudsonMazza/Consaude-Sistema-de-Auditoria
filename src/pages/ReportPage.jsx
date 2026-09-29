@@ -5,7 +5,7 @@ import {
   StatusBadge, ResultBadge, DirectionTag, DiffValue, SearchField, FilterChips, EmptyState, ActionMenu, Drawer, Callout,
   Icon, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
-import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
+import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize } from '../lib/display.js';
 import { useToast } from '../components/Toaster.jsx';
 
 const ORDER = ['pendente', 'revisado', 'corrigido'];
@@ -117,9 +117,9 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
         </div>
         <Card className="cs-span-5 cs-md-12" title="Resumo">
           <KpiGroup columns={compact ? 2 : 3}>
-            <KpiCard label="Médicos analisados" value={formatNumber(resultados.totalMedicos)} icon="stethoscope" />
+            <KpiCard label="Médicos" value={formatNumber(resultados.totalMedicos)} icon="stethoscope" hint="analisados" />
             <KpiCard label="Com divergência" value={formatNumber(resultados.medicosComDivergencia)} icon="triangle-alert" tone="danger" hint={`${formatPercent(pctMedicos)} dos médicos`} />
-            <KpiCard label="Total de divergências" value={formatNumber(Number(resultados.totalDivergencias) || 0)} icon="list-checks" hint="itens a revisar" />
+            <KpiCard label="Divergências" value={formatNumber(Number(resultados.totalDivergencias) || 0)} icon="list-checks" hint="itens a revisar" />
             {compact && <KpiCard label="Revisão" value={`${formatNumber(reviewed)} de ${formatNumber(divs.length)}`} icon="circle-check" tone="success" hint={`${formatNumber(by('corrigido'))} corrigidos`} />}
           </KpiGroup>
         </Card>
