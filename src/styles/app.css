@@ -79,3 +79,8 @@ button, input, select, textarea { font-family: inherit; }
 
 /* Resumo de tipos no drawer */
 .cs-tipos { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Link "Pular para o conteúdo" (visível só no foco por teclado) */
+.cs-skip { position: absolute; left: var(--space-4); top: -60px; z-index: var(--z-toast); padding: var(--space-2) var(--space-4); border-radius: var(--radius-full); background: var(--accent-fill); color: var(--on-accent); font: 500 14px/20px var(--font-sans); text-decoration: none; }
+.cs-skip:focus { top: var(--space-2); }
+.cs-content:focus { outline: none; }
