@@ -23,7 +23,8 @@ export function Brand({ compact = false, onClick, tagline = true, className }) {
       )}
     </>
   );
-  if (!onClick) return <span className={cx('cs-brand', className)} aria-label="ConSaúde — Auditoria Financeira">{inner}</span>;
+  // Sem link, o texto visível ("ConSaúde", "Auditoria Financeira") já é o nome lido; aria-label num <span> não vale.
+  if (!onClick) return <span className={cx('cs-brand', className)}>{inner}</span>;
   return (
     <a className={cx('cs-brand', className)} href="#dashboard" aria-label="ConSaúde — Auditoria Financeira, início"
       onClick={(e) => { e.preventDefault(); onClick(); }}>

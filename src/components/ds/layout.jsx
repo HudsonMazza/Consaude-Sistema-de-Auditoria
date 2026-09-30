@@ -214,10 +214,25 @@ export function PageHeader({ eyebrow, title, subtitle, meta, badge, primary, sec
   );
 }
 
-/** ActionBar — sticky footer bar for forms/flows (Salvar, Processar). Stacks full-width above the bottom nav on mobile. */
+/**
+ * ActionBar — sticky footer bar for forms/flows (Salvar, Processar). Stacks full-width above the bottom nav on mobile.
+ * Publica a própria altura em --cs-actionbar-h (no <html>): o scroll-padding usa esse valor para que um campo focado
+ * nunca fique escondido atrás da barra (WCAG 2.4.11).
+ */
 export function ActionBar({ message, icon = 'info', children, tone }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const root = document.documentElement;
+    const set = () => root.style.setProperty('--cs-actionbar-h', Math.ceil(el.getBoundingClientRect().height) + 'px');
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => { ro.disconnect(); root.style.removeProperty('--cs-actionbar-h'); };
+  }, []);
   return (
-    <div className={cx('cs-actionbar', tone && `cs-actionbar--${tone}`)}>
+    <div ref={ref} className={cx('cs-actionbar', tone && `cs-actionbar--${tone}`)}>
       <span className="cs-actionbar__msg" role="status">{icon && <Icon name={icon} />}<span>{message}</span></span>
       <div className="cs-btngroup">{children}</div>
     </div>

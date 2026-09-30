@@ -1,12 +1,14 @@
 // Auditorias › Minhas auditorias (histórico) e › Nova auditoria (upload → comparação → processar).
 // Filtros, escopo, ações e exclusão seguem exatamente a lógica do HistoryScreen/UploadScreen anteriores.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { matchesAuditScope } from '../dashboard';
-import { exportExcel, exportPDF } from '../lib/exporters.js';
+// Exportações carregam sob demanda (as funções já eram assíncronas).
+const exportExcel = (...a) => import('../lib/exporters.js').then((m) => m.exportExcel(...a));
+const exportPDF = (...a) => import('../lib/exporters.js').then((m) => m.exportPDF(...a));
 import { getPreferences, getTolerance } from '../lib/preferences.js';
 import {
   Button, Badge, Card, StatStrip, DataTable, Pagination, ResultBadge, Avatar, SearchField, FilterChips, SheetSelect,
-  PageHeader, Tabs, EmptyState, ErrorState, ConfirmDialog, Dropzone, UploadProgress, TextField, Accordion, Checkbox,
+  PageHeader, Tabs, EmptyState, ErrorState, ConfirmDialog, Dropzone, UploadProgress, TextField, SelectField, Accordion, Checkbox,
   Callout, Icon, ActionBar, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
 import { auditTime, auditValue, auditSortValue, auditItemCount, capitalize } from '../lib/display.js';
@@ -34,6 +36,37 @@ export default function AuditsPage({ view, onShowList, onNewAudit, list, upload,
 }
 
 // ─── LISTA (antigo HistoryScreen) ─────────────────────────────────────────────
+
+/**
+ * Progresso da revisão de uma auditoria salva: médicos com divergência marcados como Revisado ou Corrigido
+ * (row.statuses, salvo no Firestore) sobre os médicos com divergência (row.resultados.divergencias).
+ * Auditorias antigas, sem status, contam como 0 revisados.
+ */
+function reviewProgress(row) {
+  const divs = Array.isArray(row?.resultados?.divergencias) ? row.resultados.divergencias : [];
+  const st = row?.statuses && typeof row.statuses === 'object' ? row.statuses : {};
+  const total = divs.length;
+  const done = divs.filter((d) => st[d.id] === 'revisado' || st[d.id] === 'corrigido').length;
+  return { total, done, complete: total > 0 && done === total, pending: total > 0 && done < total };
+}
+
+function ReviewCell({ row }) {
+  const r = reviewProgress(row);
+  if (!r.total) return <span className="cs-faint" title="Sem divergências para revisar">—</span>;
+  if (r.complete) return <Badge tone="success" icon="circle-check">Revisão concluída</Badge>;
+  return (
+    <span className="cs-review">
+      <span className="cs-review__bar" aria-hidden="true"><span style={{ width: `${(r.done / r.total) * 100}%` }} /></span>
+      <span>{formatNumber(r.done)} de {formatNumber(r.total)}<span className="cs-sr"> médicos revisados</span></span>
+    </span>
+  );
+}
+function ReviewTag({ row }) {
+  const r = reviewProgress(row);
+  if (!r.total) return null;
+  if (r.complete) return <Badge tone="success" icon="circle-check" size="sm">Revisão concluída</Badge>;
+  return <Badge tone="outline" icon="clock" size="sm">{formatNumber(r.done)} de {formatNumber(r.total)} revisados</Badge>;
+}
 function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, status = 'ready', onRetry, exportOptions, scope, setScope }) {
   const toast = useToast();
   const { compact } = useViewport();
@@ -51,12 +84,14 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
   const compliant = scopedHistory.filter(row => Number(row.divergencias) === 0);
   const totalDifferences = scopedHistory.reduce((total, row) => total + auditItemCount(row), 0);
   const withAI = scopedHistory.filter(row => row.aiReportHTML);
+  const reviewPending = scopedHistory.filter(row => reviewProgress(row).pending);
   const visibleHistory = scopedHistory.filter((row) => {
     const matchesQuery = !normalizedQuery || [row.data, row.periodo, row.arquivos, row.userName]
       .some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery));
     const matchesFilter = filter === 'all'
       || (filter === 'differences' && Number(row.divergencias) > 0)
       || (filter === 'compliant' && Number(row.divergencias) === 0)
+      || (filter === 'review' && reviewProgress(row).pending)
       || (filter === 'ai' && row.aiReportHTML);
     return matchesQuery && matchesFilter;
   });
@@ -67,6 +102,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
     { key: 'files', header: 'Arquivos', priority: 3, render: (a) => <span className="cs-cell-main" style={{ maxWidth: 240 }}>{String(a.arquivos || '—').split(' / ').map((f, i) => <span key={i} className="cs-mono cs-truncate" title={f} style={{ color: 'var(--ink-2)' }}>{f}</span>)}</span> },
     ...(isAdmin ? [{ key: 'auditor', header: 'Auditor', priority: 2, render: (a) => a.userName ? <span className="cs-cell-person"><Avatar name={a.userName} size="sm" /><span className="cs-truncate" title={a.userName}>{titleCase(a.userName)}</span></span> : <span className="cs-faint">—</span> }] : []),
     { key: 'res', header: 'Resultado', sortable: true, sortValue: (a) => auditItemCount(a), render: (a) => <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}><ResultBadge divergences={auditItemCount(a)} />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm" title="Relatório IA disponível">IA</Badge>}</span> },
+    { key: 'review', header: 'Revisão', sortable: true, sortValue: (a) => { const r = reviewProgress(a); return r.total ? r.done / r.total : 2; }, render: (a) => <ReviewCell row={a} /> },
     { key: 'value', header: 'Valor divergente', align: 'right', sortable: true, sortValue: auditValue, render: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : <span className="cs-faint">—</span>) },
   ];
   const sortedAll = sortRows(visibleHistory, columns, sort);
@@ -122,6 +158,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
             <FilterChips label="Filtrar auditorias" value={filter} onChange={setFilter} options={[
               { id: 'all', label: 'Todas', count: scopedHistory.length },
               { id: 'differences', label: 'Com divergências', count: withDifferences.length, icon: 'triangle-alert' },
+              { id: 'review', label: 'Revisão pendente', count: reviewPending.length, icon: 'clock' },
               { id: 'compliant', label: 'Conformes', count: compliant.length, icon: 'circle-check' },
               { id: 'ai', label: 'Com relatório IA', count: withAI.length, icon: 'sparkles' },
             ]} />
@@ -143,7 +180,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
               title: (a) => refOf(a),
               value: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : '—'),
               meta: (a) => <><span className="cs-num">{a.data || '—'}{auditTime(a) ? ' · ' + auditTime(a) : ''}</span>{isAdmin && a.userName && <span>{titleCase(a.userName)}</span>}</>,
-              tags: (a) => <><ResultBadge divergences={auditItemCount(a)} size="sm" />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm">IA</Badge>}</>,
+              tags: (a) => <><ResultBadge divergences={auditItemCount(a)} size="sm" /><ReviewTag row={a} />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm">IA</Badge>}</>,
             }}
             footer={visibleHistory.length > 10 ? <Pagination page={current} pageSize={pageSize} total={visibleHistory.length} compact={compact} onPage={setPage} onPageSize={setPageSize} /> : null} />
         )}
@@ -170,16 +207,50 @@ function FileErrors({ errors }) {
   );
 }
 
-function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits }) {
+/**
+ * "Ajustar colunas": mostra os cabeçalhos da planilha em listas, já preenchidas com o que foi detectado.
+ * Abre sozinho quando o arquivo tem problema de validação (coluna não encontrada, linhas sem médico, valores zerados).
+ */
+function ColumnMapper({ headers, detected, chosen, onChoose, open, onToggle, forced }) {
+  const id = useId();
+  const value = (k) => (chosen && chosen[k] !== undefined ? chosen[k] : detected?.[k]) || '';
+  const opts = (empty) => [{ value: '', label: empty }, ...headers.map((h) => ({ value: h, label: h }))];
+  const shown = open || forced;
+  return (
+    <>
+      {!forced && (
+        <button type="button" className="cs-linkbtn cs-disclosure" aria-expanded={shown} aria-controls={id} onClick={onToggle}>
+          <Icon name="sliders-horizontal" />Ajustar colunas<Icon name="chevron-down" />
+        </button>
+      )}
+      {shown && (
+        <div className="cs-colmap" id={id} role="group" aria-labelledby={id + 't'}>
+          <div className="cs-colmap__head">
+            <p className="cs-colmap__title" id={id + 't'}>Colunas usadas na comparação</p>
+            <p className="cs-colmap__sub">Escolha qual coluna da planilha tem cada informação. A escolha vale para este arquivo.</p>
+          </div>
+          <div className="cs-colmap__grid">
+            <SelectField label="Coluna do médico" value={value('medicoCol')} options={opts('Escolha a coluna')} onChange={(e) => onChoose({ medicoCol: e.target.value })} />
+            <SelectField label="Coluna do valor" value={value('valorCol')} options={opts('Escolha a coluna')} onChange={(e) => onChoose({ valorCol: e.target.value })} />
+            <SelectField label="Coluna do paciente" optional value={value('pacienteCol')} options={opts('Nenhuma')} onChange={(e) => onChoose({ pacienteCol: e.target.value })} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits, heads1 = [], heads2 = [], colMap = {}, chooseColumn }) {
   const { compact } = useViewport();
+  const [mapOpen, setMapOpen] = useState({ prod: false, rep: false });
   // Um arquivo com erro de validação precisa ser trocado antes de processar de novo.
   const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length);
   const reading = (file1 && rows1 == null) || (file2 && rows2 == null);
   const canStart = file1 && file2 && !hasFileErrors && !reading;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
-    { num: 1, title: 'Relatório de Produção', subtitle: 'O que cada médico produziu no período', file: file1, setFile: setFile1, cols: cols1, rows: rows1, err: uploadError?.prod },
-    { num: 2, title: 'Relatório de Repasse', subtitle: 'O que foi pago a cada médico', file: file2, setFile: setFile2, cols: cols2, rows: rows2, err: uploadError?.rep },
+    { num: 1, key: 'prod', title: 'Relatório de Produção', subtitle: 'O que cada médico produziu no período', file: file1, setFile: setFile1, cols: cols1, rows: rows1, heads: heads1, err: uploadError?.prod },
+    { num: 2, key: 'rep', title: 'Relatório de Repasse', subtitle: 'O que foi pago a cada médico', file: file2, setFile: setFile2, cols: cols2, rows: rows2, heads: heads2, err: uploadError?.rep },
   ];
   const options = [
     { key: 'ignorar', label: `Ignorar diferenças abaixo de ${formatBRL(getTolerance())}` },
@@ -199,7 +270,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         {uploadError?.geral && <Callout tone="danger" title="Não foi possível continuar">{uploadError.geral}</Callout>}
         <UploadProgress done={selectedCount} total={2} />
         <div style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: compact ? 12 : 20, alignItems: 'start' }}>
-          {cards.map(({ num, title, subtitle, file, setFile, rows, err }) => (
+          {cards.map(({ num, key, title, subtitle, file, setFile, cols, rows, heads, err }) => (
             <Dropzone key={num} step={num} title={title} subtitle={subtitle} invalid={Boolean(err?.length)}
               reading={Boolean(file) && rows == null && !err?.length}
               file={file ? { name: file.name, size: file.size, rows: rows != null && rows >= 0 ? rows : null } : null}
@@ -207,6 +278,11 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
               onReplace={(f) => handleFileSelect(f, setFile)}
               onRemove={() => setFile(null)}>
               <FileErrors errors={err} />
+              {file && heads.length > 0 && chooseColumn && (
+                <ColumnMapper headers={heads} detected={cols} chosen={colMap[key]} forced={Boolean(err?.length)}
+                  open={mapOpen[key]} onToggle={() => setMapOpen((m) => ({ ...m, [key]: !m[key] }))}
+                  onChoose={(patch) => { setMapOpen((m) => ({ ...m, [key]: true })); chooseColumn(key, patch); }} />
+              )}
             </Dropzone>
           ))}
         </div>
@@ -251,7 +327,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
       </Card>
       <div className="cs-span-12">
         <ActionBar icon={hasFileErrors ? 'circle-alert' : canStart ? 'circle-check' : 'info'}
-          message={hasFileErrors ? 'Troque o arquivo indicado acima para processar a auditoria.'
+          message={hasFileErrors ? 'Troque o arquivo indicado acima ou ajuste as colunas dele para processar a auditoria.'
             : file1 && file2 && reading ? 'Lendo as planilhas…'
             : canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.'
             : <span>{!file1 && !file2 ? 'Faltam' : 'Falta'} {missing} para processar.</span>}>

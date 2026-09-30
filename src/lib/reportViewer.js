@@ -8,19 +8,29 @@
 
 const escAttr = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function reportViewerHTML(html, title = "Relatório IA · ConSaúde") {
+// Fundo da moldura (aparece enquanto o iframe carrega): segue o tema com que o relatório foi gerado.
+const VIEWER_BG = { dark: "#16171a", light: "#f3f4f7" };
+function reportTheme(html, theme) {
+  if (theme === "light" || theme === "dark") return theme;
+  const m = /<html[^>]*\bdata-theme="(light|dark)"/i.exec(String(html || ""));
+  return m ? m[1] : "dark";
+}
+
+export function reportViewerHTML(html, title = "Relatório IA · ConSaúde", theme) {
+  const t = reportTheme(html, theme);
   return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escAttr(title)}</title>
-<style>html,body{margin:0;height:100%;background:#16171a}iframe{display:block;border:0;width:100%;height:100%}</style>
+<meta name="color-scheme" content="${t}">
+<style>html,body{margin:0;height:100%;background:${VIEWER_BG[t]}}iframe{display:block;border:0;width:100%;height:100%}</style>
 </head><body>
 <iframe title="${escAttr(title)}" sandbox="allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" srcdoc="${escAttr(html)}"></iframe>
 </body></html>`;
 }
 
 /** Abre o relatório numa aba nova, isolado do app. Retorna false se o navegador bloqueou a aba. */
-export function openReport(html, { title } = {}) {
-  const blob = new Blob([reportViewerHTML(html, title)], { type: "text/html;charset=utf-8" });
+export function openReport(html, { title, theme } = {}) {
+  const blob = new Blob([reportViewerHTML(html, title, theme)], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   setTimeout(() => URL.revokeObjectURL(url), 60000);
   // Sem "noopener" para saber se a aba abriu (com ele o navegador sempre devolve null);

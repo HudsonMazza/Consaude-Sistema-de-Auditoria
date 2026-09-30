@@ -2,24 +2,30 @@
 // Lógica movida de auditoria-medica.jsx sem alteração; só a apresentação mudou.
 import React, { useState } from 'react';
 import { login, enviarResetDeSenha, alterarPropriaSenha, mensagemDeErro } from '../auth';
-import { Brand, Button, Callout, Checkbox, Icon, IconButton, Spinner, TextField, ThemeToggle } from '../components/ds/index.js';
+import { Brand, Button, Callout, Checkbox, Icon, IconButton, Spinner, TextField, ThemeToggle, useViewport } from '../components/ds/index.js';
 
-export function AuthLayout({ children, busy }) {
+/** Casca das telas sem login: marca e tema no <header>, conteúdo no <main> de cada tela, rodapé no <footer>.
+ * `data-compact` liga as regras de toque (44px) e de campos de 16px no mobile, como na casca do app. */
+export function AuthLayout({ children, busy, footer }) {
+  const { compact } = useViewport();
   return (
-    <div className="cs-auth cs-root" aria-busy={busy || undefined}>
-      <div className="cs-auth__theme"><ThemeToggle /></div>
-      <div className="cs-auth__brand"><Brand /></div>
+    <div className="cs-auth cs-root" data-compact={compact || undefined} aria-busy={busy || undefined}>
+      <header className="cs-auth__brand">
+        <div className="cs-auth__theme"><ThemeToggle /></div>
+        <Brand />
+      </header>
       {children}
+      {footer && <footer className="cs-auth__foot">{footer}</footer>}
     </div>
   );
 }
 
 export function AuthLoading() {
   return (
-    <div className="cs-auth cs-root" aria-busy="true" role="status">
+    <main className="cs-auth cs-root" aria-busy="true">
       <Spinner size={28} />
-      <span className="cs-sr">Carregando o ConSaúde</span>
-    </div>
+      <p className="cs-auth__sub" role="status">Carregando o ConSaúde…</p>
+    </main>
   );
 }
 
@@ -69,7 +75,7 @@ export function LoginScreen({ onLogin, notice = '' }) {
   if (showForgot) return <ForgotPasswordScreen email={forgotEmail} onBack={() => setShowForgot(false)} />;
 
   return (
-    <AuthLayout>
+    <AuthLayout footer={<p>ConSaúde · Sistema interno de auditoria médica</p>}>
       <main className="cs-card cs-auth__card">
         <div className="cs-auth__head">
           <h1 className="cs-auth__title">Bem-vindo de volta</h1>
@@ -91,7 +97,6 @@ export function LoginScreen({ onLogin, notice = '' }) {
           </Button>
         </form>
       </main>
-      <p className="cs-auth__foot">ConSaúde · Sistema interno de auditoria médica</p>
     </AuthLayout>
   );
 }

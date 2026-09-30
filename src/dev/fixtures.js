@@ -1,6 +1,6 @@
 // Dados FICTÍCIOS só para o harness de desenvolvimento (dev-preview.html). Nomes inventados; valores ilustrativos.
 // Nada aqui é importado pelo app de produção.
-import { brl } from '../lib/engine.js';
+import { brl, generateInsights } from '../lib/engine.js';
 
 const MEDICOS = [
   'RICARDO ALVES PEREIRA', 'MARIANA DOS SANTOS COSTA', 'JOÃO PEDRO DA SILVA', 'FERNANDA LIMA ROCHA', 'CARLOS EDUARDO MENDES',
@@ -36,12 +36,7 @@ export function makeResultados({ referencia = 'setembro de 2026', n = MEDICOS.le
   return {
     totalMedicos: 42, medicosComDivergencia: divs.length, totalDivergencias: totalDivs, valorTotal: brl(valorTotal), valorTotalRaw: valorTotal,
     divergencias: divs,
-    insights: divs.length ? [
-      `${divs.length} de 42 médico(s) analisados (26%) apresentam divergências de faturamento.`,
-      `Maior divergência individual: ${divs[0].medico} — ${divs[0].diferenca} de diferença.`,
-      'Padrão mais frequente: "Maior no Repasse" com 9 ocorrência(s). Recomenda-se revisão sistemática deste tipo.',
-      `O valor total divergente de ${brl(valorTotal)} impacta diretamente o fechamento financeiro. Prioridade máxima para o setor de faturamento.`,
-    ] : [],
+    insights: divs.length ? generateInsights(divs, 42, valorTotal) : [],
     processadoEm: '26/09/2026, 14:32:10', referencia, file1Name: 'producao_set-2026_clinica-integrada-sao-lucas.xlsx', file2Name: 'repasse_set-2026_clinica-integrada-sao-lucas.xlsx',
   };
 }
@@ -59,6 +54,9 @@ export function makeHistorico(now = new Date()) {
       id: 'a' + (30 - i), data: d.toLocaleDateString('pt-BR'), periodo: ref,
       arquivos: `producao_${i}_${ref.slice(0, 3).toLowerCase()}.xlsx / repasse_${i}_${ref.slice(0, 3).toLowerCase()}.csv`,
       divergencias: res.medicosComDivergencia, valor: res.valorTotal, resultados: res, userId, userName, createdAt: d,
+      // Revisão salva: a mais recente concluída, a terceira pela metade, as outras sem status (auditorias antigas).
+      ...(i === 0 ? { statuses: Object.fromEntries(res.divergencias.map((x, j) => [x.id, j % 2 ? 'corrigido' : 'revisado'])) } : {}),
+      ...(i === 2 ? { statuses: Object.fromEntries(res.divergencias.slice(0, 2).map((x) => [x.id, 'revisado'])) } : {}),
       ...(i % 3 === 2 ? { aiReportHTML: '<!doctype html><title>Relatório IA fictício</title><p>Prévia</p>' } : {}),
     };
   });

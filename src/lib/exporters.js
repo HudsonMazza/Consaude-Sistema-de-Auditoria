@@ -10,6 +10,7 @@
 // Regras de dados (design system): Diferença = Repasse − Produção; positivo = "Repasse maior" (pago a
 // mais, laranja), negativo = "Produção maior" (pago a menos, azul). Nunca vermelho/verde para direção.
 import { parseValue } from './engine.js';
+import { titleCase } from './names.js';
 
 // ─── Helpers de dados (sem dependência de DOM) ────────────────────────────────
 
@@ -29,12 +30,8 @@ const count = (n) => NUM.format(Number(n) || 0);
 /** Arredonda centavos (evita 2325.2999999 nas células do Excel). */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-const PARTICLES = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'di', 'du']);
-/** CAIXA ALTA das planilhas → Caixa De Título, com "de/da/do" em minúsculas (mesma regra do titleCase do DS). */
-export function titleCase(name = '') {
-  return String(name ?? '').toLowerCase().split(/\s+/).filter(Boolean)
-    .map((w, i) => (i > 0 && PARTICLES.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
-}
+// titleCase vive em names.js (o motor também usa); continua exportado daqui para quem já importava.
+export { titleCase };
 const capitalize = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : '');
 
 const pad = (n) => String(n).padStart(2, '0');

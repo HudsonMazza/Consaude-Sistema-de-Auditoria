@@ -44,15 +44,23 @@ function fakeFile(name, size) {
 
 function Shell() {
   const [page, setPage] = useState(screen);
-  const [statuses, setStatuses] = useState({ 'MARIANA DOS SANTOS COSTA': 'revisado', 'JOÃO PEDRO DA SILVA': 'corrigido', 'FERNANDA LIMA ROCHA': 'revisado', 'CARLOS EDUARDO MENDES': 'corrigido' });
   const resultados = makeResultados();
+  // report-done: todos revisados/corrigidos (estado "Revisão concluída").
+  const [statuses, setStatuses] = useState(page === 'report-done'
+    ? Object.fromEntries(resultados.divergencias.map((d, i) => [d.id, i % 3 ? 'revisado' : 'corrigido']))
+    : { 'MARIANA DOS SANTOS COSTA': 'revisado', 'JOÃO PEDRO DA SILVA': 'corrigido', 'FERNANDA LIMA ROCHA': 'revisado', 'CARLOS EDUARDO MENDES': 'corrigido' });
+  const [changedAt, setChangedAt] = useState(page === 'report-done' ? new Date(2026, 8, 30, 14, 32) : null);
+  const saveParam = params.get('save');
+  const saveState = { status: saveParam || 'saved', savedAt: new Date(2026, 8, 30, 14, 32), persisted: saveParam !== 'session', onRetry: () => {} };
   const [selected, setSelected] = useState(page === 'report-drawer' ? resultados.divergencias[0] : null);
   const [configs, setConfigs] = useState(getNewAuditDefaults);
   const loaded = page === 'new-loaded' || page === 'new-error';
   const [file1, setFile1] = useState(loaded ? fakeFile('producao_set-2026_clinica-integrada-sao-lucas.xlsx', 184320) : null);
   const [file2, setFile2] = useState(page === 'new-error' ? fakeFile('repasse_set-2026.csv', 40960) : null);
   const [periodo, setPeriodo] = useState(loaded ? 'Setembro/2026' : '');
-  const uploadError = page === 'new-error' ? { prod: [], rep: ['Coluna de valor/total não identificada.'] } : page === 'new-format' ? { geral: 'Formato inválido: ".pdf". Use .xlsx, .xls ou .csv.' } : null;
+  const [colMap, setColMap] = useState({ prod: null, rep: null });
+  const [uploadError, setUploadError] = useState(page === 'new-error' ? { prod: [], rep: ['Não encontramos a coluna de valor. Indique qual é em “Ajustar colunas”.'] } : page === 'new-format' ? { geral: 'Formato inválido: ".pdf". Use .xlsx, .xls ou .csv.' } : null);
+  const chooseColumn = (key, patch) => { setColMap((m) => ({ ...m, [key]: { ...(m[key] || {}), ...patch } })); setUploadError((p) => (p && p[key] ? { ...p, [key]: undefined } : p)); };
   const nav = (id) => setPage(id === 'audits' ? 'audits' : id);
   const base = page.split('-')[0];
   const active = { dashboard: 'dashboard', audits: 'audits', new: 'audits', processing: 'audits', report: 'audits', users: 'users', profile: 'profile', settings: 'settings-page', 'settings-page': 'settings-page' }[base] || base;
@@ -67,12 +75,14 @@ function Shell() {
       upload={{ file1, file2, setFile1, setFile2, handleFileSelect: (f, set) => set(f), configs, setConfigs, startAudit: () => setPage('processing'), uploadError,
         cols1: file1 ? { medicoCol: 'Nome do Prestador', pacienteCol: 'Beneficiário', valorCol: 'Valor Total' } : null, rows1: file1 ? 1284 : null,
         cols2: file2 ? { medicoCol: 'Profissional', pacienteCol: 'Paciente', valorCol: null } : null, rows2: file2 ? 1190 : null,
-        periodoAuditoria: periodo, setPeriodoAuditoria: setPeriodo }} />
+        periodoAuditoria: periodo, setPeriodoAuditoria: setPeriodo,
+        heads1: file1 ? ['Data do Atendimento', 'Nome do Prestador', 'Beneficiário', 'Procedimento', 'Valor Total'] : [],
+        heads2: file2 ? ['Competência', 'Profissional', 'Paciente', 'Código', 'Vl. Líquido Pago'] : [], colMap, chooseColumn }} />
   );
   else if (base === 'processing') body = <ProcessingPage steps={[true, true, true, false, false, false]} progress={50} />;
   else if (base === 'report') body = (
     <ReportPage selectedMedico={selected} setSelectedMedico={setSelected} resultados={params.get('empty') ? makeResultados({ n: 0 }) : resultados}
-      statuses={statuses} setStatuses={setStatuses} exportFormat={getPreferences().formato} onExportExcel={() => {}} onExportPDF={() => {}} onGenerateAI={() => {}} aiLoading={page === 'report-ai'}
+      statuses={statuses} setStatuses={(v) => { setStatuses(v); setChangedAt(new Date()); }} saveState={saveState} reviewChangedAt={changedAt} exportFormat={getPreferences().formato} onExportExcel={() => {}} onExportPDF={() => {}} onGenerateAI={() => {}} aiLoading={page === 'report-ai'}
       onShare={() => {}} onNewAudit={() => setPage('new')} />
   );
   else if (base === 'users') body = <UsersPage currentUser={user} deps={fakeAuth} />;
