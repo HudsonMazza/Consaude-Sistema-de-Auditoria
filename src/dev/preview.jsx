@@ -18,6 +18,7 @@ import ProfilePage from '../pages/ProfilePage.jsx';
 import SettingsPage from '../pages/SettingsPage.jsx';
 import { LoginScreen, ForgotPasswordScreen, ForcePasswordChangeScreen, FirebaseSetupScreen } from '../pages/auth.jsx';
 import { makeHistorico, makeResultados, ADMIN, AUDITOR, USER_LIST } from './fixtures.js';
+import { getPreferences, getNewAuditDefaults } from '../lib/preferences.js';
 
 const params = new URLSearchParams(location.search);
 const screen = params.get('screen') || 'dashboard';
@@ -45,7 +46,7 @@ function Shell() {
   const [statuses, setStatuses] = useState({ 'MARIANA DOS SANTOS COSTA': 'revisado', 'JOÃO PEDRO DA SILVA': 'corrigido', 'FERNANDA LIMA ROCHA': 'revisado', 'CARLOS EDUARDO MENDES': 'corrigido' });
   const resultados = makeResultados();
   const [selected, setSelected] = useState(page === 'report-drawer' ? resultados.divergencias[0] : null);
-  const [configs, setConfigs] = useState({ ignorar: true, comparaNome: true, comparaCodigo: false, ia: true });
+  const [configs, setConfigs] = useState(getNewAuditDefaults);
   const loaded = page === 'new-loaded' || page === 'new-error';
   const [file1, setFile1] = useState(loaded ? fakeFile('producao_set-2026_clinica-integrada-sao-lucas.xlsx', 184320) : null);
   const [file2, setFile2] = useState(page === 'new-error' ? fakeFile('repasse_set-2026.csv', 40960) : null);
@@ -70,7 +71,7 @@ function Shell() {
   else if (base === 'processing') body = <ProcessingPage steps={[true, true, true, false, false, false]} progress={50} />;
   else if (base === 'report') body = (
     <ReportPage selectedMedico={selected} setSelectedMedico={setSelected} resultados={params.get('empty') ? makeResultados({ n: 0 }) : resultados}
-      statuses={statuses} setStatuses={setStatuses} onExportExcel={() => {}} onExportPDF={() => {}} onGenerateAI={() => {}} aiLoading={page === 'report-ai'}
+      statuses={statuses} setStatuses={setStatuses} exportFormat={getPreferences().formato} onExportExcel={() => {}} onExportPDF={() => {}} onGenerateAI={() => {}} aiLoading={page === 'report-ai'}
       onShare={() => {}} onNewAudit={() => setPage('new')} />
   );
   else if (base === 'users') body = <UsersPage currentUser={user} deps={fakeAuth} />;

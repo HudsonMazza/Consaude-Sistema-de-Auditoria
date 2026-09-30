@@ -8,6 +8,10 @@
 // - `histStatus/histRetry`: estados de carregando/erro/tentar novamente do histórico;
 // - `aiHidden`: "Continuar em segundo plano" no modal de geração do relatório IA;
 // - activePage "upload" (definido por startAudit em caso de erro) agora abre Nova auditoria com o erro visível.
+//
+// Preferências (Configurações, src/lib/preferences.js): a tolerância substitui o R$ 0,01 fixo da opção
+// "ignorar diferenças" em novas auditorias (fica registrada em `res.tolerancia`); as opções de comparação
+// da Nova auditoria partem dos padrões salvos; as exportações recebem o que incluir e o responsável.
 import { useState, useEffect, useRef } from "react";
 import { firebaseReady } from "./firebase";
 import { observarSessao, logout } from "./auth";
@@ -17,6 +21,7 @@ import {
 } from "./lib/engine.js";
 import { exportExcel, exportPDF } from "./lib/exporters.js";
 import { generateAIReport } from "./lib/aiReport.js";
+import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
 import { AiProgressModal } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
 import { ToastProvider, useToast } from "./components/Toaster.jsx";
@@ -47,7 +52,7 @@ export default function App() {
   const [progress,      setProgress]      = useState(0);
   const [steps,         setSteps]         = useState([false,false,false,false,false,false]);
   const [selectedMedico,setSelectedMedico]= useState(null);
-  const [configs,       setConfigs]       = useState({ ignorar: true, comparaNome: true, comparaCodigo: false, ia: true });
+  const [configs,       setConfigs]       = useState(getNewAuditDefaults);
   const [resultados,    setResultados]    = useState(null);
   const [historico,     setHistorico]     = useState([]);
   const [histStatus,    setHistStatus]    = useState("loading");
@@ -163,6 +168,9 @@ export default function App() {
       step(2, 50);
 
       // Etapa 4: Identificação de divergências
+      // Tolerância (Configurações › Preferências de auditoria) lida no início de cada nova auditoria.
+      // Padrão R$ 0,01 = o mesmo limite fixo de antes da opção "ignorar diferenças".
+      const threshold = configs.ignorar ? getTolerance() : 0;
       const divs = [];
       for (const med of allMeds) {
         const pr   = prodPorMed[med] ?? [];
@@ -170,7 +178,6 @@ export default function App() {
         const tp   = sumVals(pr, pCols.valorCol);
         const tr   = sumVals(rr, rCols.valorCol);
         const diff = tp - tr;
-        const threshold = configs.ignorar ? 0.01 : 0;
         if (Math.abs(diff) < threshold) continue;
 
         const detalhes = configs.comparaNome ? comparePatients(pr, rr, pCols, rCols) : [];
@@ -216,6 +223,7 @@ export default function App() {
         referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
         file1Name:    file1.name,
         file2Name:    file2.name,
+        tolerancia:   threshold,
       };
       const entry = {
         data:        new Date().toLocaleDateString("pt-BR"),
@@ -301,6 +309,7 @@ export default function App() {
     setFile1(null);
     setFile2(null);
     setUploadError(null);
+    setConfigs(getNewAuditDefaults());
   };
 
   const openEntry = (entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); };
@@ -347,7 +356,7 @@ export default function App() {
           <DashboardPage historico={historico} currentUser={currentUser} status={histStatus} onRetry={() => setHistRetry((n) => n + 1)}
             onNewAudit={startNewAudit} onOpen={openEntry} onShowAudits={showAuditList} />
         ) : page === "audits-new" || page === "audits" ? (
-          <AuditsPage view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
+          <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
             historyCount={histStatus === "ready" ? (currentUser.role === 'admin' ? historico.filter(r => r.userId === currentUser.id).length : historico.length) : undefined}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
             upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria }} />
@@ -356,8 +365,9 @@ export default function App() {
             selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}
             resultados={resultados}
             statuses={statuses} setStatuses={setStatuses}
-            onExportExcel={() => resultados && exportExcel(resultados)}
-            onExportPDF={()   => resultados && exportPDF(resultados)}
+            exportFormat={getPreferences().formato}
+            onExportExcel={() => resultados && exportExcel(resultados, getExportOptions(currentUser, statuses))}
+            onExportPDF={()   => resultados && exportPDF(resultados, getExportOptions(currentUser, statuses))}
             onGenerateAI={handleGenerateAIReport}
             aiLoading={aiLoading}
             onShare={() => {

@@ -6,9 +6,10 @@
     <title>ConSaúde · Auditoria de Produção Médica</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <script>
-      // Aplica o tema salvo antes do primeiro paint (padrão: escuro).
+      // Aplica o tema salvo antes do primeiro paint (padrão: escuro; "system" segue o sistema).
       try {
         var t = localStorage.getItem('cs-theme');
+        if (t === 'system') t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
       } catch (e) {}
     </script>

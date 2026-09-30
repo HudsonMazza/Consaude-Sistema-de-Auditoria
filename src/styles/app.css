@@ -91,3 +91,9 @@ button, input, select, textarea { font-family: inherit; }
 .cs-stat__value small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* Processamento da auditoria não é IA: etapa ativa em azul (o violeta fica reservado à IA). */
 .cs-steps--process .cs-step--active .cs-step__mark { color: var(--accent-text); }
+
+/* Botão dividido do Exportar (relatório): ação no formato padrão + menu com os outros formatos. */
+.cs-split { display: inline-flex; align-items: stretch; }
+.cs-split > .cs-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 14px; }
+.cs-split .cs-iconbtn { width: 36px; height: var(--control-md, 40px); margin-left: -1px; border-radius: 0 var(--radius-full) var(--radius-full) 0; }
+.cs-split .cs-iconbtn .cs-icon { width: 18px; height: 18px; }

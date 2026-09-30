@@ -2,15 +2,17 @@
 // Filtros, escopo, ações e exclusão seguem exatamente a lógica do HistoryScreen/UploadScreen anteriores.
 import React, { useEffect, useState } from 'react';
 import { matchesAuditScope } from '../dashboard';
-import { exportExcel } from '../lib/exporters.js';
+import { exportExcel, exportPDF } from '../lib/exporters.js';
+import { getPreferences, getTolerance } from '../lib/preferences.js';
 import {
   Button, Badge, Card, StatStrip, DataTable, Pagination, ResultBadge, Avatar, SearchField, FilterChips, SheetSelect,
   PageHeader, Tabs, EmptyState, ErrorState, ConfirmDialog, Dropzone, UploadProgress, TextField, Accordion, Checkbox,
   Callout, Icon, ActionBar, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
 import { auditTime, auditValue, auditSortValue, capitalize } from '../lib/display.js';
+import { useToast } from '../components/Toaster.jsx';
 
-export default function AuditsPage({ view, onShowList, onNewAudit, historyCount, list, upload }) {
+export default function AuditsPage({ view, onShowList, onNewAudit, historyCount, list, upload, exportOptions }) {
   const { compact } = useViewport();
   return (
     <>
@@ -19,13 +21,14 @@ export default function AuditsPage({ view, onShowList, onNewAudit, historyCount,
       <Tabs label="Auditorias" value={view} fill={compact}
         onChange={(id) => (id === 'new' ? onNewAudit() : onShowList())}
         tabs={[{ id: 'list', label: 'Minhas auditorias', count: historyCount }, { id: 'new', label: 'Nova auditoria', icon: 'plus' }]} />
-      {view === 'new' ? <NewAudit {...upload} onShowAudits={onShowList} /> : <AuditList {...list} onNewAudit={onNewAudit} />}
+      {view === 'new' ? <NewAudit {...upload} onShowAudits={onShowList} /> : <AuditList {...list} onNewAudit={onNewAudit} exportOptions={exportOptions} />}
     </>
   );
 }
 
 // ─── LISTA (antigo HistoryScreen) ─────────────────────────────────────────────
-function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, status = 'ready', onRetry }) {
+function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, status = 'ready', onRetry, exportOptions }) {
+  const toast = useToast();
   const { compact } = useViewport();
   const isAdmin = currentUser?.role === 'admin';
   const [confirmDel, setConfirmDel] = useState(null);
@@ -73,7 +76,13 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
   const refOf = (row) => capitalize(row.periodo) || row.data || 'Auditoria sem referência';
   const rowActions = (row) => {
     const items = [];
-    if (row.resultados) items.push({ label: 'Exportar Excel', icon: 'file-spreadsheet', variant: 'export', onSelect: () => exportExcel(row.resultados) });
+    if (row.resultados) {
+      // Formato padrão (Configurações) primeiro.
+      const run = (fn) => () => Promise.resolve(fn(row.resultados, exportOptions?.())).catch(() => toast({ tone: 'error', title: 'Não foi possível exportar', text: 'Tente novamente em instantes.' }));
+      const excel = { label: 'Exportar Excel', icon: 'file-spreadsheet', variant: 'export', onSelect: run(exportExcel) };
+      const pdf = { label: 'Exportar PDF', icon: 'file-text', onSelect: run(exportPDF) };
+      items.push(...(getPreferences().formato === 'XLSX' ? [excel, pdf] : [pdf, excel]));
+    }
     if (row.aiReportHTML) items.push({ label: 'Ver relatório IA', icon: 'sparkles', variant: 'ia', onSelect: () => openAIReport(row) });
     if (items.length) items.push({ separator: true });
     items.push({ label: 'Excluir auditoria', icon: 'trash-2', variant: 'danger', onSelect: () => setConfirmDel(row) });
@@ -175,7 +184,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
     { num: 2, title: 'Relatório de Repasse', subtitle: 'O que foi pago a cada médico', file: file2, setFile: setFile2, cols: cols2, rows: rows2, err: uploadError?.rep },
   ];
   const options = [
-    { key: 'ignorar', label: 'Ignorar diferenças abaixo de R$ 0,01' },
+    { key: 'ignorar', label: `Ignorar diferenças abaixo de ${formatBRL(getTolerance())}` },
     { key: 'comparaNome', label: 'Comparar pacientes pelo nome' },
     { key: 'ia', label: 'Gerar análise inteligente' },
   ];
