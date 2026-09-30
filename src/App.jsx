@@ -13,7 +13,7 @@
 // "ignorar diferenças" em novas auditorias (fica registrada em `res.tolerancia`); as opções de comparação
 // da Nova auditoria partem dos padrões salvos; as exportações recebem o que incluir e o responsável.
 import { useState, useEffect, useRef } from "react";
-import { firebaseReady } from "./firebase";
+import { firebaseReady, auth } from "./firebase";
 import { observarSessao, logout } from "./auth";
 import { observarHistorico, salvarAuditoria, salvarRelatorioIA, excluirAuditoria, migrarHistoricoLocal } from "./audits";
 import {
@@ -21,6 +21,7 @@ import {
 } from "./lib/engine.js";
 import { exportExcel, exportPDF } from "./lib/exporters.js";
 import { generateAIReport } from "./lib/aiReport.js";
+import { openReport } from "./lib/reportViewer.js";
 import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
 import { AiProgressModal } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
@@ -69,6 +70,8 @@ export default function App() {
   const [aiError,       setAiError]       = useState(null);
   const [aiDone,        setAiDone]        = useState(0);
   const [histWarning,   setHistWarning]   = useState(null);
+  const [refDetectada, setRefDetectada] = useState({ prod: null, rep: null });
+  // Cache da leitura por arquivo: { file, promise }. A auditoria sempre usa a leitura do arquivo selecionado agora.
   const parsedCache  = useRef({ prod: null, rep: null });
 
   // Auth: a sessão é resolvida pelo Firebase. O perfil (papel admin/user) vem do
@@ -93,6 +96,13 @@ export default function App() {
     setHistorico([]);
     setFile1(null);
     setFile2(null);
+    // Nada da sessão anterior passa para o próximo usuário desta aba
+    setStatuses({});
+    setSelectedMedico(null);
+    setUploadError(null);
+    setPeriodoAuditoria('');
+    setHistWarning(null);
+    setAiError(null);
   };
 
   const handleUpdateUser = (updated) => {
@@ -111,20 +121,33 @@ export default function App() {
     });
   }, [currentUser?.id, currentUser?.role, histRetry]);
 
-  // Preview de colunas + cache de linhas ao selecionar arquivo
-  useEffect(() => {
-    if (!file1) { setCols1(null); setRows1(null); parsedCache.current.prod = null; return; }
-    parseExcel(file1)
-      .then((rows) => { parsedCache.current.prod = rows; setCols1(detectColumns(rows)); setRows1(rows.length); })
-      .catch(() => { setCols1(null); setRows1(null); parsedCache.current.prod = null; });
-  }, [file1]);
+  // Lê cada arquivo uma vez só. Se o arquivo mudar, a leitura anterior é descartada.
+  const readRows = (key, file) => {
+    const cached = parsedCache.current[key];
+    if (cached && cached.file === file) return cached.promise;
+    const promise = parseExcel(file);
+    parsedCache.current[key] = { file, promise };
+    return promise;
+  };
 
-  useEffect(() => {
-    if (!file2) { setCols2(null); setRows2(null); parsedCache.current.rep = null; return; }
-    parseExcel(file2)
-      .then((rows) => { parsedCache.current.rep = rows; setCols2(detectColumns(rows)); setRows2(rows.length); })
-      .catch(() => { setCols2(null); setRows2(null); parsedCache.current.rep = null; });
-  }, [file2]);
+  // Prévia ao selecionar arquivo: linhas lidas e período detectado. Resultado de uma leitura antiga
+  // (arquivo trocado ou removido no meio) é ignorado.
+  const usePreview = (key, file, setCols, setRows) => useEffect(() => {
+    setCols(null); setRows(null);
+    setRefDetectada((r) => ({ ...r, [key]: null }));
+    if (!file) { parsedCache.current[key] = null; return undefined; }
+    let alive = true;
+    readRows(key, file)
+      .then((rows) => {
+        if (!alive) return;
+        setCols(detectColumns(rows)); setRows(rows.length);
+        setRefDetectada((r) => ({ ...r, [key]: extractReferencia(rows) }));
+      })
+      .catch(() => { /* o erro aparece ao processar */ });
+    return () => { alive = false; };
+  }, [file]);
+  usePreview("prod", file1, setCols1, setRows1);
+  usePreview("rep", file2, setCols2, setRows2);
 
   const step = (i, p) => {
     setSteps((s) => { const n = [...s]; n[i] = true; return n; });
@@ -142,10 +165,7 @@ export default function App() {
     try {
       // Etapa 1: Leitura dos arquivos (reaproveitando cache do preview quando disponível)
       step(0, 16);
-      const [prodRows, repRows] = await Promise.all([
-        parsedCache.current.prod ? Promise.resolve(parsedCache.current.prod) : parseExcel(file1),
-        parsedCache.current.rep  ? Promise.resolve(parsedCache.current.rep)  : parseExcel(file2),
-      ]);
+      const [prodRows, repRows] = await Promise.all([readRows("prod", file1), readRows("rep", file2)]);
 
       // Etapa 2: Identificação das colunas
       const pCols = detectColumns(prodRows);
@@ -178,7 +198,10 @@ export default function App() {
         const tp   = sumVals(pr, pCols.valorCol);
         const tr   = sumVals(rr, rCols.valorCol);
         const diff = tp - tr;
-        if (Math.abs(diff) < threshold) continue;
+        // Compara em centavos: diferença zero (ou resíduo de ponto flutuante) nunca é divergência,
+        // e uma diferença igual à tolerância não é ignorada por arredondamento (0,70 − 0,60 = 0,0999…).
+        const centavos = Math.round(Math.abs(diff) * 100);
+        if (centavos === 0 || centavos < Math.round(threshold * 100)) continue;
 
         const detalhes = configs.comparaNome ? comparePatients(pr, rr, pCols, rCols) : [];
         // diff > 0 → Produção maior (médico subpago); diff < 0 → Repasse maior (possível sobrepagamento)
@@ -220,7 +243,7 @@ export default function App() {
         divergencias:           divs,
         insights,
         processadoEm: new Date().toLocaleString("pt-BR"),
-        referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+        referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || extractReferencia(repRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
         file1Name:    file1.name,
         file2Name:    file2.name,
         tolerancia:   threshold,
@@ -275,10 +298,13 @@ export default function App() {
     setAiHidden(false);
     setAiError(null);
     try {
-      const html = await generateAIReport(resultados, { responsavel: getExportOptions(currentUser).responsavel });
+      const html = await generateAIReport(resultados, {
+        responsavel: getExportOptions(currentUser).responsavel,
+        getIdToken: auth?.currentUser ? () => auth.currentUser.getIdToken() : undefined,
+      });
+      openReport(html, { title: `Relatório IA · ${resultados.referencia || "Auditoria"}` });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url  = URL.createObjectURL(blob);
-      window.open(url, "_blank");
       const a = document.createElement("a");
       a.href = url;
       a.download = `relatorio-ia-${new Date().toISOString().slice(0, 10)}.html`;
@@ -310,9 +336,17 @@ export default function App() {
     setFile2(null);
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
+    setStatuses({});
+    setSelectedMedico(null);
   };
 
-  const openEntry = (entry) => { setResultados({ ...entry.resultados, _histId: entry.id }); setActivePage("results"); };
+  // Os status de revisão são desta auditoria: abrir outra começa do zero (antes vazavam entre meses).
+  const openEntry = (entry) => {
+    setStatuses({});
+    setSelectedMedico(null);
+    setResultados({ ...entry.resultados, _histId: entry.id });
+    setActivePage("results");
+  };
   const showAuditList = () => { setActivePage("audits"); setAuditView("list"); };
   const navigate = (id) => {
     setActivePage(id);
@@ -359,7 +393,7 @@ export default function App() {
           <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
             historyCount={histStatus === "ready" ? (currentUser.role === 'admin' ? historico.filter(r => r.userId === currentUser.id).length : historico.length) : undefined}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
-            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria }} />
+            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep }} />
         ) : page === "results" ? (
           <ReportPage
             selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}

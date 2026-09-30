@@ -10,6 +10,7 @@ import {
   Callout, Icon, ActionBar, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
 import { auditTime, auditValue, auditSortValue, capitalize } from '../lib/display.js';
+import { openReport } from '../lib/reportViewer.js';
 import { useToast } from '../components/Toaster.jsx';
 
 export default function AuditsPage({ view, onShowList, onNewAudit, historyCount, list, upload, exportOptions }) {
@@ -69,10 +70,8 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
   const current = Math.min(page, pages);
   const pageRows = sortedAll.slice((current - 1) * pageSize, current * pageSize);
 
-  const openAIReport = (row) => {
-    const report = new Blob([row.aiReportHTML], { type:'text/html;charset=utf-8' });
-    window.open(URL.createObjectURL(report), '_blank');
-  };
+  // Isolado num iframe sandbox: o HTML salvo no histórico não roda com a sessão de quem abre.
+  const openAIReport = (row) => openReport(row.aiReportHTML, { title: `Relatório IA · ${capitalize(row.periodo) || 'Auditoria'}` });
   const refOf = (row) => capitalize(row.periodo) || row.data || 'Auditoria sem referência';
   const rowActions = (row) => {
     const items = [];
@@ -166,7 +165,7 @@ function FileErrors({ errors }) {
   );
 }
 
-function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, onShowAudits }) {
+function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits }) {
   const { compact } = useViewport();
   const canStart = file1 && file2;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
@@ -202,8 +201,12 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         <Card>
           <TextField label="Referência da auditoria" optional value={periodoAuditoria} prefixIcon="calendar"
             onChange={(event) => setPeriodoAuditoria(event.target.value)}
-            placeholder="Ex.: Abril de 2025 ou 01–15/04/2025"
-            help="Substitui o período detectado nos arquivos. Aparece nos relatórios e exportações." />
+            placeholder={periodoDetectado ? capitalize(periodoDetectado) : 'Ex.: Abril de 2025 ou 01–15/04/2025'}
+            help={periodoDetectado
+              ? `Detectado nos arquivos: ${capitalize(periodoDetectado)}. Preencha só se quiser usar outro período.`
+              : (file1 || file2)
+                ? `Não encontramos a data nos arquivos. Se ficar em branco, será usado o mês atual (${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}).`
+                : 'Detectado a partir das datas dos arquivos. Aparece nos relatórios e exportações.'} />
         </Card>
         <Accordion items={[{
           id: 'opt', icon: 'sliders-horizontal', title: 'Opções de comparação',
