@@ -1,6 +1,7 @@
 // Derivações só de exibição (não alteram dados nem cálculos). Regras do design system (03-regras-de-dados.md):
 // Diferença = Repasse − Produção; positivo = "Repasse maior", negativo = "Produção maior".
 import { parseValue } from './engine.js';
+import { auditDate } from '../dashboard.js';
 
 /** Diferença assinada de um médico (Repasse − Produção) a partir do resultado já calculado. */
 export function signedDiff(d) {
@@ -26,12 +27,17 @@ function toDate(valor) {
 
 /** Chave de mês (aaaa-mm) do registro, com a mesma precedência de datas de src/dashboard.js. */
 export function auditMonthKey(row) {
-  let d = toDate(row?.createdAt);
-  if (!d) {
-    const [day, month, year] = String(row?.data || '').split('/').map(Number);
-    d = day && month && year ? new Date(year, month - 1, day) : null;
-  }
+  const d = row ? auditDate(row) : null;
   return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : null;
+}
+
+/**
+ * Quantidade de divergências de uma auditoria do histórico, na mesma unidade do relatório,
+ * do dashboard e das exportações: itens (por paciente; 1 por médico quando não há detalhe).
+ * `row.divergencias` guarda outra coisa (médicos com divergência) e fica só como reserva.
+ */
+export function auditItemCount(row) {
+  return Number(row?.resultados?.totalDivergencias ?? row?.divergencias) || 0;
 }
 
 /** Mesmo critério de "auditoria com divergência" usado por summarizeAudits. */
@@ -42,7 +48,7 @@ export function hasDifferences(row) {
 
 /** Hora (HH:mm) de um registro do histórico, quando o Firestore a tiver. */
 export function auditTime(row) {
-  const d = toDate(row?.createdAt);
+  const d = row ? auditDate(row) : null;
   return d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 }
 
@@ -55,10 +61,8 @@ export function auditValue(row) {
 
 /** Ordenação cronológica de registros do histórico (createdAt, senão data dd/mm/aaaa). */
 export function auditSortValue(row) {
-  const d = toDate(row?.createdAt);
-  if (d) return d.getTime();
-  const [day, month, year] = String(row?.data || '').split('/').map(Number);
-  return day && month && year ? new Date(year, month - 1, day).getTime() : 0;
+  const d = row ? auditDate(row) : null;
+  return d ? d.getTime() : 0;
 }
 
 /** "26/09/2026, 14:32:10" (toLocaleString) → { date: '26/09/2026', time: '14:32' }. */

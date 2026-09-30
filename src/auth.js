@@ -12,7 +12,7 @@ import {
   createUserWithEmailAndPassword,
 } from "firebase/auth";
 import {
-  doc, getDoc, setDoc, updateDoc, collection, getDocs, query, orderBy, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, collection, getDocs, query, orderBy, serverTimestamp, onSnapshot,
 } from "firebase/firestore";
 import { auth, db, withSecondaryAuth } from "./firebase";
 
@@ -61,24 +61,49 @@ async function carregarPerfil(uid) {
 }
 
 /**
- * Observa a sessão do Firebase Auth e resolve o perfil correspondente.
- * Chama cb(null) quando não há sessão válida.
+ * Observa a sessão do Firebase Auth e acompanha o perfil em tempo real.
+ *
+ * cb(usuario)                       sessão válida (chamado de novo a cada mudança no perfil: papel, nome…)
+ * cb(null, { motivo })              sem sessão; motivo "desativado" | "sem-perfil" quando o app encerrou a sessão
+ * cb(undefined, { erro: "rede" })   não deu para ler o perfil (offline/lento): a sessão NÃO é encerrada
+ *
+ * Antes o perfil era lido uma vez só: uma conta desativada seguia navegando, e qualquer falha
+ * de rede ao abrir o app deslogava (apagando o "Lembrar-me").
  */
 export function observarSessao(cb) {
-  return onAuthStateChanged(auth, async (fbUser) => {
+  let pararPerfil = null;
+  let timer = null;
+  const limpar = () => { pararPerfil?.(); pararPerfil = null; clearTimeout(timer); };
+
+  const pararAuth = onAuthStateChanged(auth, (fbUser) => {
+    limpar();
     if (!fbUser) return cb(null);
-    try {
-      const perfil = await carregarPerfil(fbUser.uid);
-      if (!perfil || perfil.disabled === true) {
-        await signOut(auth);
-        return cb(null);
-      }
-      cb({ ...perfil, uid: fbUser.uid, email: fbUser.email });
-    } catch {
-      await signOut(auth);
-      cb(null);
-    }
+    // Sem resposta do Firestore em 12 s (offline): avisa sem deslogar; o listener continua e resolve quando voltar
+    timer = setTimeout(() => cb(undefined, { erro: "rede" }), 12000);
+    pararPerfil = onSnapshot(
+      doc(db, "users", fbUser.uid),
+      (snap) => {
+        clearTimeout(timer);
+        const perfil = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        if (!perfil || perfil.disabled === true) {
+          limpar();
+          signOut(auth).finally(() => cb(null, { motivo: perfil ? "desativado" : "sem-perfil" }));
+          return;
+        }
+        cb({ ...perfil, uid: fbUser.uid, email: fbUser.email });
+      },
+      (err) => {
+        clearTimeout(timer);
+        if (err?.code === "permission-denied") {
+          limpar();
+          signOut(auth).finally(() => cb(null, { motivo: "desativado" }));
+          return;
+        }
+        cb(undefined, { erro: "rede" });
+      },
+    );
   });
+  return () => { limpar(); pararAuth(); };
 }
 
 // ─── LOGIN / LOGOUT ───────────────────────────────────────────────────────────
@@ -141,25 +166,36 @@ export async function criarUsuario({ nome, email, cargo, role, modo, senhaTempor
   const emailLimpo = email.trim().toLowerCase();
   const senha = modo === "temporaria" ? senhaTemporaria : senhaAleatoria();
 
+  // Conta e perfil andam juntos: se o perfil não for salvo, a conta recém-criada é apagada
+  // (a instância secundária ainda está logada como ela). Sem isso sobrava uma conta sem perfil,
+  // invisível na lista e impossível de recriar ("e-mail já cadastrado").
   const uid = await withSecondaryAuth(async (secondaryAuth) => {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, emailLimpo, senha);
+    try {
+      await setDoc(doc(db, "users", cred.user.uid), {
+        name:  nome.trim(),
+        email: emailLimpo,
+        cargo: (cargo || "").trim(),
+        role,
+        disabled: false,
+        mustChangePassword: modo === "temporaria",
+        createdAt: serverTimestamp(),
+        createdBy: criadoPor,
+      });
+    } catch (err) {
+      try { await cred.user.delete(); } catch { /* se nem isso der, o Console do Firebase resolve */ }
+      throw err;
+    }
     return cred.user.uid;
   });
 
-  await setDoc(doc(db, "users", uid), {
-    name:  nome.trim(),
-    email: emailLimpo,
-    cargo: (cargo || "").trim(),
-    role,
-    disabled: false,
-    mustChangePassword: modo === "temporaria",
-    createdAt: serverTimestamp(),
-    createdBy: criadoPor,
-  });
+  // O convite é a última etapa: se o e-mail falhar, a conta já existe e o admin reenvia pelo "Redefinir senha".
+  let emailEnviado = true;
+  if (modo !== "temporaria") {
+    try { await sendPasswordResetEmail(auth, emailLimpo); } catch { emailEnviado = false; }
+  }
 
-  if (modo !== "temporaria") await sendPasswordResetEmail(auth, emailLimpo);
-
-  return uid;
+  return { uid, emailEnviado };
 }
 
 export function atualizarUsuario(uid, { nome, cargo, role }) {

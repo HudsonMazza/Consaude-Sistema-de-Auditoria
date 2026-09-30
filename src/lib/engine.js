@@ -41,6 +41,43 @@ export function normalizeName(s) {
     .trim();
 }
 
+/** Nome para exibição: mesmo tratamento do normalizeName (caixa alta, sem "Dr."), mas mantendo os acentos. */
+export function displayName(s) {
+  return String(s ?? "")
+    .toUpperCase()
+    .replace(/(^|\s)DRA?(?:\.\s*|\s+)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Para cada nome normalizado (chave de agrupamento, sem acento), a grafia original mais frequente nas planilhas.
+ * Ex.: { "JOAO DA SILVA": "JOÃO DA SILVA" }. Assim o relatório mostra "João", mas o cruzamento continua pela chave.
+ */
+export function originalNames(rowsList, col) {
+  const counts = new Map();
+  for (const [rows, c] of rowsList.map((r) => (Array.isArray(r) ? [r, col] : [r.rows, r.col]))) {
+    if (!c) continue;
+    for (const row of rows) {
+      const key = normalizeName(row[c]);
+      if (!key) continue;
+      const shown = displayName(row[c]);
+      const m = counts.get(key) || new Map();
+      m.set(shown, (m.get(shown) || 0) + 1);
+      counts.set(key, m);
+    }
+  }
+  const out = {};
+  for (const [key, m] of counts) out[key] = [...m.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  return out;
+}
+
+/** Linhas sem nome no campo `col` (ficam fora do cruzamento) e a soma dos valores delas. */
+export function rowsWithoutName(rows, nameCol, valueCol) {
+  const sem = rows.filter((r) => !normalizeName(r[nameCol]));
+  return { linhas: sem.length, valor: sumVals(sem, valueCol) };
+}
+
 export function normalizeCol(s) {
   return String(s)
     .normalize("NFD")
@@ -247,6 +284,7 @@ export function comparePatients(prodRows, repRows, pCols, rCols) {
   if (!pCols.pacienteCol || !rCols.pacienteCol) return [];
   const pp  = groupBy(prodRows, pCols.pacienteCol);
   const rp  = groupBy(repRows, rCols.pacienteCol);
+  const nomes = originalNames([{ rows: prodRows, col: pCols.pacienteCol }, { rows: repRows, col: rCols.pacienteCol }]);
   const all = new Set([...Object.keys(pp), ...Object.keys(rp)]);
 
   return [...all]
@@ -256,7 +294,7 @@ export function comparePatients(prodRows, repRows, pCols, rCols) {
       const diff = pv - rv;
       if (Math.round(Math.abs(diff) * 100) === 0) return []; // centavos (evita resíduo de ponto flutuante)
       return [{
-        paciente:     pac,
+        paciente:     nomes[pac] || pac,
         producao:     brl(pv),
         repasse:      brl(rv),
         diferenca:    brl(Math.abs(diff)),

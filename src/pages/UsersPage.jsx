@@ -19,7 +19,7 @@ function Choice({ value, current, title, text, onSelect, disabled }) {
   );
 }
 
-export default function UsersPage({ currentUser, deps = authApi }) {
+export default function UsersPage({ currentUser, onUpdateUser, deps = authApi }) {
   const { listarUsuarios, criarUsuario, atualizarUsuario, definirUsuarioDesativado, enviarResetDeSenha, mensagemDeErro } = deps;
   const { compact } = useViewport();
   const toast = useToast();
@@ -28,6 +28,8 @@ export default function UsersPage({ currentUser, deps = authApi }) {
   const [loadError,  setLoadError]  = useState('');
   const [showForm,   setShowForm]   = useState(false);
   const [editUser,   setEditUser]   = useState(null);
+  // Editando a própria conta: o perfil de acesso fica travado (evita perder o admin sem querer)
+  const editingSelf = Boolean(editUser && editUser.id === currentUser?.id);
   const [form,       setForm]       = useState({ name:'', email:'', password:'', role:'user', cargo:'', modo:'convite' });
   const [formError,  setFormError]  = useState('');
   const [saving,     setSaving]     = useState(false);
@@ -76,6 +78,14 @@ export default function UsersPage({ currentUser, deps = authApi }) {
 
   const saveUser = async () => {
     setFormError('');
+    const isSelf = Boolean(editUser && editUser.id === currentUser.id);
+    const activeAdmins = users.filter(u => u.role === 'admin' && !u.disabled);
+    if (isSelf && form.role !== editUser.role) {
+      setFormError('Você não pode alterar o próprio perfil de acesso. Peça a outro administrador.'); return;
+    }
+    if (editUser && editUser.role === 'admin' && form.role !== 'admin' && !editUser.disabled && activeAdmins.length <= 1) {
+      setFormError('Esta é a única conta de administrador ativa. Promova outra conta antes de mudar este perfil.'); return;
+    }
     if (!form.name.trim())  { setFormError('Nome é obrigatório.'); return; }
     if (!form.email.trim()) { setFormError('E-mail é obrigatório.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
@@ -86,23 +96,23 @@ export default function UsersPage({ currentUser, deps = authApi }) {
     }
     setSaving(true);
     try {
-      let aviso;
       if (editUser) {
         // O e-mail é a identidade no Firebase Auth e não é editável aqui.
         await atualizarUsuario(editUser.id, { nome:form.name.trim(), cargo:form.cargo.trim(), role:form.role });
-        aviso = 'Usuário atualizado.';
+        // Editar a própria conta atualiza o nome/cargo na barra lateral na hora
+        if (isSelf) onUpdateUser?.({ ...currentUser, name: form.name.trim(), cargo: form.cargo.trim() });
+        toast({ tone: 'success', title: 'Usuário atualizado.' });
       } else {
-        await criarUsuario({
+        const { emailEnviado } = await criarUsuario({
           nome: form.name.trim(), email: form.email.trim(), cargo: form.cargo.trim(), role: form.role,
           modo: form.modo, senhaTemporaria: form.password,
         }, currentUser.id);
-        aviso = form.modo === 'temporaria'
-          ? 'Usuário criado. Ele deverá trocar a senha temporária no primeiro acesso.'
-          : `Convite enviado para ${form.email.trim()}. O usuário define a própria senha pelo link.`;
+        if (form.modo === 'temporaria') toast({ tone: 'success', title: 'Usuário criado. Ele deverá trocar a senha temporária no primeiro acesso.' });
+        else if (emailEnviado) toast({ tone: 'success', title: `Convite enviado para ${form.email.trim()}. O usuário define a própria senha pelo link.` });
+        else toast({ tone: 'warning', title: 'Usuário criado, mas o e-mail de convite não foi enviado', text: 'Use "Redefinir senha" na lista para enviar o link de novo.', duration: 9000 });
       }
-      toast({ tone: 'success', title: aviso });
-      await refresh();
       setShowForm(false);
+      await refresh().catch(() => {});
     } catch (err) {
       setFormError(mensagemDeErro(err));
     } finally {
@@ -113,6 +123,12 @@ export default function UsersPage({ currentUser, deps = authApi }) {
   // No plano Spark o cliente não exclui a conta de outro usuário no Auth.
   // Desativar corta o acesso pelas Security Rules, que é o efeito que importa.
   const toggleAtivo = async (u, desativar) => {
+    if (desativar && u.id === currentUser.id) {
+      toast({ tone: 'error', title: 'Você não pode desativar a própria conta.' }); setConfirmDel(null); return;
+    }
+    if (desativar && u.role === 'admin' && users.filter(x => x.role === 'admin' && !x.disabled).length <= 1) {
+      toast({ tone: 'error', title: 'Esta é a única conta de administrador ativa.', text: 'Promova outra conta antes de desativar esta.' }); setConfirmDel(null); return;
+    }
     setActionId(u.id);
     try {
       await definirUsuarioDesativado(u.id, desativar);
@@ -297,9 +313,10 @@ export default function UsersPage({ currentUser, deps = authApi }) {
             <section className="cs-stack" style={{ gap: 12 }}>
               <div><h3 className="cs-section-title">Perfil de acesso</h3><p className="cs-section-sub">Defina quais áreas e registros esta conta poderá acessar.</p></div>
               <div className="cs-choices" role="radiogroup" aria-label="Perfil de acesso">
-                <Choice value="user" current={form.role} title="Usuário" text="Executa auditorias e consulta os próprios registros." disabled={saving} onSelect={(v) => setForm(c => ({ ...c, role: v }))} />
-                <Choice value="admin" current={form.role} title="Administrador" text="Gerencia usuários e visualiza todos os registros." disabled={saving} onSelect={(v) => setForm(c => ({ ...c, role: v }))} />
+                <Choice value="user" current={form.role} title="Usuário" text="Executa auditorias e consulta os próprios registros." disabled={saving || editingSelf} onSelect={(v) => setForm(c => ({ ...c, role: v }))} />
+                <Choice value="admin" current={form.role} title="Administrador" text="Gerencia usuários e visualiza todos os registros." disabled={saving || editingSelf} onSelect={(v) => setForm(c => ({ ...c, role: v }))} />
               </div>
+              {editingSelf && <Callout tone="info">Você não pode alterar o próprio perfil de acesso. Peça a outro administrador.</Callout>}
               {form.role === 'admin' && <Callout tone="warning">Administradores podem alterar acessos e consultar dados de todos os usuários.</Callout>}
             </section>
             {!editUser && (

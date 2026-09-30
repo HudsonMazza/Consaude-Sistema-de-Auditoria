@@ -23,13 +23,31 @@ export function AuthLoading() {
   );
 }
 
+/** Sessão salva, mas o perfil não carregou (sem internet ou Firestore lento). Não desloga. */
+export function SessionErrorScreen({ onRetry, onLogout }) {
+  return (
+    <AuthLayout>
+      <main className="cs-card cs-auth__card" role="alert">
+        <div className="cs-auth__head">
+          <h1 className="cs-auth__title">Sem conexão com o ConSaúde</h1>
+          <p className="cs-auth__sub">Não foi possível carregar sua conta. Verifique a internet e tente de novo. Sua sessão continua salva.</p>
+        </div>
+        <div className="cs-stack" style={{ gap: 8 }}>
+          <Button variant="primary" icon="refresh-cw" onClick={onRetry}>Tentar novamente</Button>
+          <Button variant="ghost" onClick={onLogout}>Sair</Button>
+        </div>
+      </main>
+    </AuthLayout>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-export function LoginScreen({ onLogin }) {
+export function LoginScreen({ onLogin, notice = '' }) {
   const [email,     setEmail]     = useState('');
   const [password,  setPassword]  = useState('');
   const [remember,  setRemember]  = useState(false);
   const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState('');
+  const [error,     setError]     = useState(notice);
   const [showPwd,   setShowPwd]   = useState(false);
   const [showForgot,setShowForgot]= useState(false);
   const [forgotEmail,setForgotEmail]= useState('');

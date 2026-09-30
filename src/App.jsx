@@ -15,9 +15,9 @@
 import { useState, useEffect, useRef } from "react";
 import { firebaseReady, auth } from "./firebase";
 import { observarSessao, logout } from "./auth";
-import { observarHistorico, salvarAuditoria, salvarRelatorioIA, excluirAuditoria, migrarHistoricoLocal } from "./audits";
+import { observarHistorico, salvarAuditoria, salvarRelatorioIA, salvarStatuses, excluirAuditoria, migrarHistoricoLocal } from "./audits";
 import {
-  parseExcel, extractReferencia, detectColumns, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
+  parseExcel, extractReferencia, detectColumns, originalNames, rowsWithoutName, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
 } from "./lib/engine.js";
 import { exportExcel, exportPDF } from "./lib/exporters.js";
 import { generateAIReport } from "./lib/aiReport.js";
@@ -26,7 +26,7 @@ import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } f
 import { AiProgressModal, Modal, Button } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
 import { ToastProvider, useToast } from "./components/Toaster.jsx";
-import { LoginScreen, ForcePasswordChangeScreen, FirebaseSetupScreen, AuthLoading } from "./pages/auth.jsx";
+import { LoginScreen, ForcePasswordChangeScreen, FirebaseSetupScreen, AuthLoading, SessionErrorScreen } from "./pages/auth.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import AuditsPage from "./pages/AuditsPage.jsx";
 import ProcessingPage from "./pages/ProcessingPage.jsx";
@@ -42,9 +42,22 @@ const AI_STEPS = [
   { label: 'Preparando o plano de ação', state: 'pending' },
 ];
 
+const ERRO_LEITURA = "Não foi possível ler este arquivo. Confira se é uma planilha .xlsx, .xls ou .csv válida e sem senha.";
+
+/** Mensagem em português para falhas ao processar (as bibliotecas de planilha lançam erros em inglês). */
+function mensagemErroProcessamento(err) {
+  const msg = String(err?.message || "");
+  if (/zip|cfb|encrypt|password|corrupt|not a spreadsheet|unsupported|invalid|unexpected|file format|end of data/i.test(msg)) return ERRO_LEITURA;
+  if (/falha ao ler/i.test(msg)) return "Não foi possível ler um dos arquivos. Selecione-o de novo e tente outra vez.";
+  return "Não foi possível processar a auditoria. Tente novamente; se continuar, confira os arquivos enviados.";
+}
+
 export default function App() {
   const [currentUser,   setCurrentUser]   = useState(null);
   const [authReady,     setAuthReady]     = useState(false);
+  const [sessionError,  setSessionError]  = useState(false);
+  const [loginNotice,   setLoginNotice]   = useState('');
+  const currentUserRef = useRef(null);
   const [activePage,    setActivePage]    = useState("dashboard");
   const [auditView,     setAuditView]     = useState("list");
   const [file1,         setFile1]         = useState(null);
@@ -61,6 +74,9 @@ export default function App() {
   const [uploadError,   setUploadError]   = useState(null);
   const [periodoAuditoria, setPeriodoAuditoria] = useState('');
   const [statuses,      setStatuses]      = useState({});
+  // Status de revisão salvos na auditoria: "blocked" = regras do Firestore ainda não permitem (fica só nesta sessão)
+  const [statusSave,    setStatusSave]    = useState("idle");
+  const statusesDirty = useRef(false);
   const [cols1,         setCols1]         = useState(null);
   const [cols2,         setCols2]         = useState(null);
   const [rows1,         setRows1]         = useState(null);
@@ -83,13 +99,35 @@ export default function App() {
   // em que dê para confiar, nem para forjar.
   useEffect(() => {
     if (!firebaseReady) { setAuthReady(true); return; }
-    return observarSessao((user) => {
+    return observarSessao((user, info) => {
+      if (info?.erro === "rede") {
+        // Só mostra a tela de reconexão se ainda não havia usuário carregado; no meio do uso o Firestore se vira offline
+        if (!currentUserRef.current) setSessionError(true);
+        setAuthReady(true);
+        return;
+      }
+      setSessionError(false);
       setCurrentUser(user);
       setAuthReady(true);
+      if (info?.motivo === "desativado") setLoginNotice("Esta conta foi desativada. Fale com o administrador.");
+      else if (info?.motivo === "sem-perfil") setLoginNotice("Conta sem perfil de acesso. Contate o administrador.");
     });
   }, []);
 
+  currentUserRef.current = currentUser;
   const handleLogin = (user) => setCurrentUser(user);
+
+  // Salva os status de revisão na auditoria aberta, 800 ms depois da última mudança
+  useEffect(() => {
+    const id = resultados?._histId;
+    if (!id || !statusesDirty.current || statusSave === "blocked") return undefined;
+    const t = setTimeout(() => {
+      salvarStatuses(id, statuses)
+        .then(() => setStatusSave("saved"))
+        .catch((e) => setStatusSave(e?.code === "permission-denied" ? "blocked" : "idle"));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [statuses, resultados?._histId]);
 
   const handleLogout = async () => {
     try { await logout(); } catch { /* segue com a limpeza local */ }
@@ -101,6 +139,7 @@ export default function App() {
     setFile1(null);
     setFile2(null);
     // Nada da sessão anterior passa para o próximo usuário desta aba
+    statusesDirty.current = false;
     setStatuses({});
     setSelectedMedico(null);
     setUploadError(null);
@@ -119,9 +158,11 @@ export default function App() {
     if (!currentUser) { setHistorico([]); return; }
     setHistStatus("loading");
     migrarHistoricoLocal(currentUser).catch(() => {});
-    return observarHistorico(currentUser, (rows) => { setHistorico(rows); setHistStatus("ready"); }, () => {
+    return observarHistorico(currentUser, (rows) => { setHistorico(rows); setHistStatus("ready"); }, (err) => {
       setHistStatus("error");
-      setHistWarning("Não foi possível carregar o histórico. Verifique sua conexão.");
+      setHistWarning(err?.code === "permission-denied"
+        ? "Sua conta não tem acesso ao histórico. Se ela foi desativada ou mudou de perfil, entre de novo."
+        : "Não foi possível carregar o histórico. Verifique sua conexão.");
     });
   }, [currentUser?.id, currentUser?.role, histRetry]);
 
@@ -149,7 +190,11 @@ export default function App() {
         setCols(detectColumns(rows)); setRows(rows.length);
         setRefDetectada((r) => ({ ...r, [key]: extractReferencia(rows) }));
       })
-      .catch(() => { /* o erro aparece ao processar */ });
+      .catch(() => {
+        if (!alive) return;
+        setRows(-1); // -1 = leitura falhou (o card mostra o erro em vez de "Carregado")
+        setUploadError((prev) => ({ ...prev, [key]: [ERRO_LEITURA] }));
+      });
     return () => { alive = false; };
   }, [file]);
   usePreview("prod", file1, setCols1, setRows1);
@@ -166,6 +211,7 @@ export default function App() {
     setProgress(0);
     setSteps([false, false, false, false, false, false]);
     setUploadError(null);
+    statusesDirty.current = false;
     setStatuses({});
 
     try {
@@ -191,6 +237,11 @@ export default function App() {
       const prodPorMed = groupBy(prodRows, pCols.medicoCol);
       const repPorMed  = groupBy(repRows,  rCols.medicoCol);
       const allMeds    = new Set([...Object.keys(prodPorMed), ...Object.keys(repPorMed)]);
+      // Grafia original (com acento) para exibir; o cruzamento continua pela chave sem acento
+      const nomesMedicos = originalNames([{ rows: prodRows, col: pCols.medicoCol }, { rows: repRows, col: rCols.medicoCol }]);
+      // Linhas sem nome de médico ficam fora do cruzamento: o relatório avisa quantas e quanto valem
+      const semProd = rowsWithoutName(prodRows, pCols.medicoCol, pCols.valorCol);
+      const semRep  = rowsWithoutName(repRows,  rCols.medicoCol, rCols.valorCol);
       step(2, 50);
 
       // Etapa 4: Identificação de divergências
@@ -213,7 +264,7 @@ export default function App() {
         // diff > 0 → Produção maior (médico subpago); diff < 0 → Repasse maior (possível sobrepagamento)
         divs.push({
           id:           med,
-          medico:       med,
+          medico:       nomesMedicos[med] || med,
           crm:          "",
           producao:     brl(tp),
           repasse:      brl(tr),
@@ -253,6 +304,7 @@ export default function App() {
         file1Name:    file1.name,
         file2Name:    file2.name,
         tolerancia:   threshold,
+        ...(semProd.linhas || semRep.linhas ? { linhasSemMedico: { prod: semProd, rep: semRep } } : {}),
       };
       const entry = {
         data:        new Date().toLocaleDateString("pt-BR"),
@@ -276,7 +328,7 @@ export default function App() {
       setActivePage("results");
     } catch (err) {
       setProcessing(false);
-      setUploadError({ geral: `Erro ao processar: ${err.message}` });
+      setUploadError({ geral: mensagemErroProcessamento(err) });
       setActivePage("upload");
     }
   };
@@ -346,13 +398,15 @@ export default function App() {
     setFile2(null);
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
+    statusesDirty.current = false;
     setStatuses({});
     setSelectedMedico(null);
   };
 
   // Os status de revisão são desta auditoria: abrir outra começa do zero (antes vazavam entre meses).
   const openEntry = (entry) => {
-    setStatuses({});
+    statusesDirty.current = false;
+    setStatuses(entry.statuses && typeof entry.statuses === "object" ? entry.statuses : {});
     setSelectedMedico(null);
     setResultados({ ...entry.resultados, _histId: entry.id });
     setActivePage("results");
@@ -365,7 +419,8 @@ export default function App() {
 
   if (!firebaseReady) return <FirebaseSetupScreen />;
   if (!authReady) return <AuthLoading />;
-  if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
+  if (!currentUser && sessionError) return <SessionErrorScreen onRetry={() => window.location.reload()} onLogout={handleLogout} />;
+  if (!currentUser) return <LoginScreen key={loginNotice} notice={loginNotice} onLogin={(u) => { setLoginNotice(''); handleLogin(u); }} />;
   if (currentUser.mustChangePassword) {
     return <ForcePasswordChangeScreen user={currentUser} onDone={handleUpdateUser} onLogout={handleLogout} />;
   }
@@ -414,7 +469,8 @@ export default function App() {
           <ReportPage
             selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}
             resultados={resultados}
-            statuses={statuses} setStatuses={setStatuses}
+            statuses={statuses} setStatuses={(v) => { statusesDirty.current = true; setStatuses(v); }}
+            statusesPersist={Boolean(resultados?._histId) && statusSave !== "blocked"}
             exportFormat={getPreferences().formato}
             onExportExcel={() => resultados && exportExcel(resultados, getExportOptions(currentUser, statuses))}
             onExportPDF={()   => resultados && exportPDF(resultados, getExportOptions(currentUser, statuses))}
@@ -428,7 +484,7 @@ export default function App() {
             onNewAudit={startNewAudit}
           />
         ) : page === "users" ? (
-          <UsersPage currentUser={currentUser} />
+          <UsersPage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
         ) : page === "profile" ? (
           <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
         ) : (
