@@ -1,6 +1,5 @@
-// Movido de auditoria-medica.jsx sem alteração de comportamento.
-// O prompt e o HTML do relatório IA (cores e layout próprios do arquivo exportado) não devem mudar com o redesign.
-import { brl } from "./engine.js";
+// Relatório IA: análise da OpenAI (prompt inalterado) + HTML autocontido no visual do design system ConSaúde.
+import { brl, parseValue } from "./engine.js";
 
 // ─── AI REPORT ───────────────────────────────────────────────────────────────
 
@@ -51,335 +50,494 @@ export async function fetchAIAnalysis(res, apiKey) {
   return JSON.parse(d.choices[0].message.content);
 }
 
-export function buildReportHTML(res, ai) {
-  const pct   = Math.round((res.medicosComDivergencia/res.totalMedicos)*100);
-  const rLbl  = pct<10?"BAIXO":pct<25?"MÉDIO":pct<50?"ALTO":"CRÍTICO";
-  const rHex  = pct<10?"#10b981":pct<25?"#f59e0b":pct<50?"#f97316":"#ef4444";
-  const rRgb  = pct<10?"16,185,129":pct<25?"245,158,11":pct<50?"249,115,22":"239,68,68";
-  const sobre = res.divergencias.filter(d=>d.sentido==="rep_maior");
-  const sub   = res.divergencias.filter(d=>d.sentido==="prod_maior");
-  const vS    = sobre.reduce((s,d)=>s+d.diferencaRaw,0);
-  const vU    = sub.reduce((s,d)=>s+d.diferencaRaw,0);
-  const gA    = (180-pct*1.8)*Math.PI/180;
-  const nx    = +(100+72*Math.cos(gA)).toFixed(1);
-  const ny    = +(100-72*Math.sin(gA)).toFixed(1);
-  const tf    = {}; res.divergencias.flatMap(d=>d.detalhes.map(p=>p.tipo)).forEach(t=>{tf[t]=(tf[t]||0)+1;});
-  const esc   = s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const prio  = raw=>raw>500?{l:"ALTA",h:"#ef4444",r:"239,68,68"}:raw>100?{l:"MÉDIA",h:"#f59e0b",r:"245,158,11"}:{l:"BAIXA",h:"#64748b",r:"100,116,139"};
-  const PC    = ["#ef4444","#f59e0b","#F47920","#10b981","#2B4AA0","#f97316","#64748b","#ec4899"];
-  const pK    = Object.keys(tf);
-  const pColS = PC.slice(0,pK.length);
-  const chartH= Math.max(280,res.divergencias.length*30);
-  const bN    = JSON.stringify(res.divergencias.map(d=>d.medico.length>38?d.medico.slice(0,36)+"…":d.medico));
-  const bV    = JSON.stringify(res.divergencias.map(d=>+d.diferencaRaw.toFixed(2)));
-  const bBg   = JSON.stringify(res.divergencias.map(d=>d.sentido==="rep_maior"?"rgba(239,68,68,.75)":"rgba(245,158,11,.75)"));
-  const bBd   = JSON.stringify(res.divergencias.map(d=>d.sentido==="rep_maior"?"#ef4444":"#f59e0b"));
+// ─── HTML DO RELATÓRIO (design system ConSaúde) ──────────────────────────────
+// Arquivo autocontido: sem scripts externos (abre offline e cabe no histórico do Firestore).
+// Tokens copiados de src/styles/tokens.css — mantenha os dois em sincronia.
 
-  const css = `*{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#050d1a;--bg2:#0a1628;--card:#0c1c36;--border:rgba(244,121,32,.2);--b2:rgba(255,255,255,.06);--in:#F47920;--vi:#2B4AA0;--gr:#10b981;--re:#ef4444;--am:#f59e0b;--mu:#64748b;--tx:#f1f5f9;--t2:#94a3b8}
-html{scroll-behavior:smooth}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);background-image:radial-gradient(ellipse 60% 40% at 15% -5%,rgba(244,121,32,.12),transparent 60%),radial-gradient(ellipse 50% 30% at 85% 0%,rgba(139,92,246,.08),transparent 55%);color:var(--tx);line-height:1.6;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{max-width:1240px;margin:0 auto;padding:0 28px 64px}
-/* HERO */
-.hero{background:linear-gradient(160deg,#0f2040 0%,#080d20 70%,var(--bg) 100%);border-bottom:1px solid var(--border);padding:48px 0 44px;margin-bottom:32px}
-.hlogo{display:flex;align-items:center;gap:18px;margin-bottom:30px}
-.hli{width:72px;height:72px;border-radius:16px;background:transparent;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;overflow:hidden}
-.hlt{font-size:28px;font-weight:800;letter-spacing:-.02em}
-.hls{font-size:14px;color:var(--mu);margin-top:2px}
-.hw{display:flex;align-items:flex-start;justify-content:space-between;gap:32px;flex-wrap:wrap}
-.ht{font-size:40px;font-weight:900;letter-spacing:-.045em;background:linear-gradient(135deg,#f1f5f9 30%,#8b9ab5);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;line-height:1.1}
-.hp{font-size:17px;color:#818cf8;font-weight:700;margin-bottom:18px;letter-spacing:.01em}
-.hs{font-size:14.5px;color:var(--t2);max-width:620px;line-height:1.8;margin-bottom:22px}
-.hm{display:flex;gap:20px;font-size:12px;color:var(--mu);flex-wrap:wrap}
-.rb{padding:11px 24px;border-radius:50px;font-size:13px;font-weight:900;letter-spacing:.1em;white-space:nowrap;flex-shrink:0;margin-top:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
-/* SECTION */
-.s{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:30px;margin-bottom:24px;box-shadow:0 4px 32px rgba(0,0,0,.35)}
-.st{font-size:16px;font-weight:700;letter-spacing:-.01em;margin-bottom:5px}
-.ss{font-size:12.5px;color:var(--mu);margin-bottom:24px}
-/* METRICS */
-.mg{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.mc{background:rgba(255,255,255,.03);border:1px solid var(--b2);border-radius:16px;padding:22px;position:relative;overflow:hidden;transition:transform .2s}
-.mc:hover{transform:translateY(-3px)}
-.mc::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.03),transparent);pointer-events:none}
-.mi{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:18px}
-.mv{font-weight:900;letter-spacing:-.04em;font-family:monospace;margin-bottom:5px}
-.ml{font-size:12px;color:var(--mu);font-weight:500}
-.mb{height:3px;border-radius:2px;background:rgba(255,255,255,.06);margin-top:18px;overflow:hidden}
-.mf{height:100%;border-radius:2px;transition:width 1s ease}
-/* DIRECTION */
-.dg{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.dc2{border-radius:16px;padding:22px}
-.dc2t{font-size:13px;font-weight:800;margin-bottom:6px}
-.dc2c{font-size:30px;font-weight:900;font-family:monospace;margin-bottom:5px}
-.dc2s{font-size:12px;margin-bottom:16px;opacity:.75}
-.di{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px;gap:8px}
-.di:last-child{border-bottom:none}
-.din{color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.div{font-family:monospace;font-weight:800;font-size:12px;white-space:nowrap}
-/* GAUGE */
-.gw{display:flex;align-items:center;gap:44px;flex-wrap:wrap}
-.gs{width:240px;flex-shrink:0}
-.gt{flex:1;min-width:220px}
-.gp{font-size:54px;font-weight:900;font-family:monospace;letter-spacing:-.04em;line-height:1}
-.gl{font-size:13px;font-weight:800;letter-spacing:.12em;margin:6px 0 14px}
-.gi{font-size:13.5px;color:var(--t2);line-height:1.75}
-.gle{display:flex;gap:14px;margin-top:18px;flex-wrap:wrap}
-.gli{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mu)}
-.gld{width:8px;height:8px;border-radius:50%}
-/* TABLE */
-.tw{overflow-x:auto;margin:0 -2px}
-table.mt{width:100%;border-collapse:collapse;min-width:920px}
-.mt th{padding:11px 15px;text-align:left;font-size:10.5px;font-weight:700;color:var(--mu);letter-spacing:.07em;text-transform:uppercase;background:rgba(0,0,0,.4);border-bottom:1px solid var(--border)}
-.mt td{padding:13px 15px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
-.tr:hover td{background:rgba(255,255,255,.025)}
-.tn{color:var(--mu);font-size:12px;text-align:center;width:36px}
-.tm{font-family:monospace;font-size:13px}
-.tc{text-align:center;width:60px}
-.ta{font-size:12px;color:var(--t2);max-width:185px;line-height:1.4}
-.mn{font-weight:700;font-size:13.5px}
-.ms{font-size:11px;color:var(--mu);margin-top:2px}
-.db{display:inline-flex;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
-.dbr{background:rgba(239,68,68,.13);color:#ef4444}
-.dbp{background:rgba(245,158,11,.13);color:#f59e0b}
-.pb{display:inline-flex;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
-/* ACCORDION */
-.dc{background:rgba(255,255,255,.025);border:1px solid var(--b2);border-radius:16px;margin-bottom:10px;overflow:hidden;transition:border-color .2s}
-.dc:hover{border-color:rgba(244,121,32,.25)}
-.ds{list-style:none;cursor:pointer;display:flex;align-items:center;gap:16px;padding:18px 22px;user-select:none;transition:background .15s}
-.ds:hover{background:rgba(255,255,255,.03)}
-.ds::-webkit-details-marker{display:none}
-.dl{display:flex;align-items:center;gap:14px;flex:1;overflow:hidden}
-.da{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;flex-shrink:0;letter-spacing:-.02em}
-.dn2{font-weight:800;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsb{font-size:11px;color:var(--mu);margin-top:2px}
-.dr2{text-align:right;flex-shrink:0}
-.dd2{font-family:monospace;font-weight:900;font-size:16px}
-.ddi{font-size:11px;margin-top:2px;opacity:.7}
-.dch{color:var(--mu);font-size:15px;flex-shrink:0;transition:transform .25s}
-details[open] .dch{transform:rotate(180deg)}
-.db2{padding:0 22px 22px}
-.dmet{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-.dm{border:1px solid;border-radius:13px;padding:16px;background:rgba(0,0,0,.22)}
-.dml{font-size:11px;color:var(--mu);margin-bottom:7px}
-.dmv{font-family:monospace;font-weight:900;font-size:15px}
-.pt{width:100%;border-collapse:collapse}
-.pt th{padding:9px 13px;text-align:left;background:rgba(0,0,0,.32);color:var(--mu);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-.ptr td{padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px}
-.ptr:last-child td{border-bottom:none}
-.ptr:hover td{background:rgba(255,255,255,.02)}
-.tpn{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-.tms{font-family:monospace;font-size:12px}
-.tb{display:inline-flex;padding:2px 9px;border-radius:10px;background:rgba(244,121,32,.1);color:#2B4AA0;font-size:11px}
-.nd{text-align:center;padding:22px;color:var(--mu);font-size:13px}
-/* PATTERNS */
-.pl{display:grid;grid-template-columns:280px 1fr;gap:28px;align-items:start}
-.pie-c{height:280px}
-.pkc{background:rgba(255,255,255,.025);border:1px solid var(--b2);border-radius:14px;padding:18px;margin-bottom:10px}
-.pkh{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.pkn{padding:2px 10px;border-radius:10px;font-size:12px;font-weight:900;flex-shrink:0}
-.pkt{font-size:13.5px;font-weight:800}
-.pktx{font-size:12.5px;color:var(--t2);line-height:1.65;margin-top:6px}
-/* ACTION */
-.ai2{display:flex;align-items:flex-start;gap:14px;padding:18px;background:rgba(255,255,255,.025);border:1px solid var(--b2);border-radius:16px;margin-bottom:10px;transition:border-color .2s}
-.ai2:hover{border-color:rgba(244,121,32,.25)}
-.an{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:white;flex-shrink:0;box-shadow:0 3px 10px rgba(0,0,0,.3)}
-.ab{flex:1;min-width:0}
-.at2{font-weight:700;font-size:14px;margin-bottom:8px;line-height:1.5}
-.am{font-size:12px;color:var(--mu);line-height:1.9;display:flex;flex-wrap:wrap;gap:4px 16px}
-.ub{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:900;letter-spacing:.06em;align-self:flex-start;flex-shrink:0;white-space:nowrap}
-/* INSIGHTS */
-.ig{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-.ict{font-size:12px;font-weight:700;color:var(--mu);letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:6px}
-.ii{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;color:var(--t2);line-height:1.65}
-.ii:last-child{border-bottom:none}
-.id2{width:7px;height:7px;border-radius:50%;background:#F47920;margin-top:8px;flex-shrink:0}
-.al{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;color:var(--t2);line-height:1.65}
-.al:last-child{border-bottom:none}
-.ai3{color:#ef4444;font-size:15px;flex-shrink:0;margin-top:1px}
-.rl{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;color:var(--t2);line-height:1.65}
-.rl:last-child{border-bottom:none}
-.ri{color:#10b981;font-size:15px;flex-shrink:0;margin-top:1px}
-.conc{background:linear-gradient(135deg,rgba(244,121,32,.1),rgba(139,92,246,.06));border:1px solid rgba(244,121,32,.25);border-radius:14px;padding:22px;font-size:14px;color:var(--t2);line-height:1.8;margin-top:22px}
-.es{color:var(--mu);text-align:center;padding:22px;font-size:13px}
-/* FOOTER */
-.ftr{border-top:1px solid var(--border);padding:26px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--mu);margin-top:8px}
-.fl{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--t2);font-size:14px}
-/* PRINT */
-@media print{body{background:#fff;color:#0f172a}.hero{background:#eef2ff!important}.s,.dc,.ai2,.pkc{background:#fff!important;border-color:#e2e8f0!important}.st,.ht,.mn,.dmv,.dd2{color:#0f172a!important}}
-@media(max-width:768px){.mg{grid-template-columns:1fr 1fr}.dg,.pl,.ig{grid-template-columns:1fr}.ht{font-size:28px}}`;
+const BRL_FMT = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const INT_FMT = new Intl.NumberFormat("pt-BR");
+const PARTICLES = new Set(["de", "da", "do", "das", "dos", "e", "di", "du"]);
 
-  // Fragments
-  const mCards = [
-    {ic:"👨‍⚕️",val:String(res.totalMedicos),lb:"Médicos analisados",cl:"#F47920",bar:100},
-    {ic:"⚠️",val:String(res.medicosComDivergencia),lb:"Com divergência ("+pct+"%)",cl:"#f59e0b",bar:pct},
-    {ic:"🔍",val:String(res.totalDivergencias),lb:"Total de divergências",cl:"#ef4444",bar:Math.min(100,Math.round(res.totalDivergencias/(res.totalMedicos*3)*100))},
-    {ic:"💰",val:esc(res.valorTotal),lb:"Valor divergente total",cl:"#10b981",bar:100},
-  ].map(m=>`<div class="mc"><div class="mi" style="background:${m.cl}22;color:${m.cl}">${m.ic}</div><div class="mv" style="color:${m.cl};font-size:${m.val.length>12?"18px":"26px"}">${m.val}</div><div class="ml">${m.lb}</div><div class="mb"><div class="mf" style="width:${m.bar}%;background:${m.cl}"></div></div></div>`).join("");
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const money = (n) => BRL_FMT.format(Math.abs(Number(n) || 0)).replace(/\s/g, " ");
+const signedMoney = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + money(n);
+const count = (n) => INT_FMT.format(Number(n) || 0);
+const plural = (n, one, many) => `${count(n)} ${n === 1 ? one : many}`;
+const pad = (n) => String(n).padStart(2, "0");
+const capitalize = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : "");
 
-  const sL = sobre.map(d=>`<div class="di"><span class="din">${esc(d.medico.length>44?d.medico.slice(0,42)+"…":d.medico)}</span><span class="div" style="color:#ef4444">↑Rep ${esc(d.diferenca)}</span></div>`).join()||'<div class="di" style="color:var(--mu)">Nenhum caso</div>';
-  const uL = sub.map(d=>`<div class="di"><span class="din">${esc(d.medico.length>44?d.medico.slice(0,42)+"…":d.medico)}</span><span class="div" style="color:#f59e0b">↑Prod ${esc(d.diferenca)}</span></div>`).join()||'<div class="di" style="color:var(--mu)">Nenhum caso</div>';
+function titleCase(name = "") {
+  return String(name ?? "").toLowerCase().split(/\s+/).filter(Boolean)
+    .map((w, i) => (i > 0 && PARTICLES.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
+}
+function initials(name = "") {
+  const parts = String(name).split(/\s+/).filter((w) => w && !PARTICLES.has(w.toLowerCase()));
+  return ((parts[0]?.[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
+function splitProcessed(text) {
+  const [date, time = ""] = String(text || "").split(/,\s*/);
+  return { date: date || "—", time: time.slice(0, 5) };
+}
 
-  const tR = res.divergencias.map((d,i)=>{
-    const ir=d.sentido==="rep_maior"; const p=prio(d.diferencaRaw);
-    return `<tr class="tr"><td class="tn">${i+1}</td><td><div class="mn">${esc(d.medico)}</div>${d.detalhes.length?`<div class="ms">${d.detalhes.length} pac. divergente${d.detalhes.length!==1?"s":""}</div>`:""}</td><td class="tm">${esc(d.producao)}</td><td class="tm">${esc(d.repasse)}</td><td class="tm" style="font-weight:700;color:${ir?"#ef4444":"#f59e0b"}">${ir?"↑Rep":"↑Prod"} ${esc(d.diferenca)}</td><td><span class="db ${ir?"dbr":"dbp"}">${ir?"Rep > Prod":"Prod > Rep"}</span></td><td class="tc">${d.detalhes.length||"—"}</td><td><span class="pb" style="background:rgba(${p.r},.13);color:${p.h}">${p.l}</span></td><td class="ta">${ir?"Revisar lançamentos no repasse":"Verificar ausências no repasse"}</td></tr>`;
+// Lucide (ISC), traço 1.75
+const ICONS = {
+  sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+  up: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
+  down: '<path d="M17 7 7 17"/><path d="M17 17H7V7"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  printer: '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  trend: '<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  list: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  expand: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+};
+const icon = (name, size = 16) => `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+
+const RISK = [
+  { max: 10, key: "baixo", label: "Baixo", tone: "success", range: "até 10%" },
+  { max: 25, key: "medio", label: "Médio", tone: "warning", range: "10–25%" },
+  { max: 50, key: "alto", label: "Alto", tone: "danger", range: "25–50%" },
+  { max: Infinity, key: "critico", label: "Crítico", tone: "danger", range: "acima de 50%" },
+];
+const prioridade = (raw) => (raw > 500 ? { label: "Alta", tone: "danger" } : raw > 100 ? { label: "Média", tone: "warning" } : { label: "Baixa", tone: "neutral" });
+const URGENCIA = { alta: { label: "Alta", tone: "danger" }, media: { label: "Média", tone: "warning" }, "média": { label: "Média", tone: "warning" }, baixa: { label: "Baixa", tone: "neutral" } };
+
+const docDiff = (d) => { const raw = Number(d?.diferencaRaw) || 0; return d?.sentido === "rep_maior" ? raw : -raw; };
+const patDiff = (p) => parseValue(p?.repasse) - parseValue(p?.producao);
+
+function dirTag(n, { compact = false } = {}) {
+  if (!n) return '<span class="tag tag--neutral">Conforme</span>';
+  const rep = n > 0;
+  return `<span class="tag tag--${rep ? "rep" : "prod"}">${icon(rep ? "up" : "down", 14)}${compact ? (rep ? "Repasse" : "Produção") : rep ? "Repasse maior" : "Produção maior"}</span>`;
+}
+const diffValue = (n) => `<span class="num diff ${n > 0 ? "is-rep" : n < 0 ? "is-prod" : ""}">${signedMoney(n)}</span>`;
+const badge = (tone, text, ic) => `<span class="badge badge--${tone}">${ic ? icon(ic, 14) : ""}${esc(text)}</span>`;
+
+const CSS = `
+:root,[data-theme="dark"]{color-scheme:dark;--bg:#16171a;--surface:#1c1d21;--surface-2:#232429;--surface-3:#2a2b31;--line:#2b2c32;--line-strong:#737782;--ink:#f2f3f5;--ink-2:#a6a9b2;--ink-3:#9196a1;--accent:#3b82e0;--accent-fill:#1f63c8;--accent-text:#7db4ff;--accent-soft:#172a45;--on-accent:#fff;--accent-deep:#1a2b6b;--soft-blue:#c9e0fa;--success:#3fcf8e;--success-soft:#173026;--warning:#f5b94a;--warning-soft:#352b17;--danger:#f47a82;--danger-soft:#3a1e23;--ia:#b99bff;--ia-soft:#2c2544;--dir-rep:#f7954a;--dir-rep-soft:#3a2518;--dir-prod:#7db4ff;--dir-prod-soft:#172a45;--chart-track:#2e3036;--hero-bg:#1a2b6b;--shadow:0 0 0 1px var(--line)}
+[data-theme="light"]{color-scheme:light;--bg:#f3f4f7;--surface:#fff;--surface-2:#f6f7fa;--surface-3:#eef0f5;--line:#e4e6ec;--line-strong:#858a96;--ink:#16171a;--ink-2:#4a4e59;--ink-3:#646978;--accent:#1e63c4;--accent-fill:#0b55b8;--accent-text:#0b55b8;--accent-soft:#e6f0fc;--accent-deep:#1a2b6b;--success:#137535;--success-soft:#e6f5eb;--warning:#8f5a06;--warning-soft:#fcf2dc;--danger:#b42331;--danger-soft:#fdecee;--ia:#7c3aed;--ia-soft:#f2ecfe;--dir-rep:#b4500e;--dir-rep-soft:#fdeee3;--dir-prod:#0b55b8;--dir-prod-soft:#e6f0fc;--chart-track:#e3e6ee;--hero-bg:#1a2b6b;--shadow:0 1px 2px rgba(22,23,26,.06),0 0 0 1px var(--line)}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:20px;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11"}
+.ic{flex-shrink:0;display:inline-block;vertical-align:middle}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+/* topbar */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand img{width:36px;height:36px;object-fit:contain;flex-shrink:0}
+.brand__mark{width:36px;height:36px;border-radius:10px;background:var(--accent-fill);color:#fff;display:grid;place-items:center}
+.brand__name{font-size:17px;font-weight:600;line-height:22px;letter-spacing:-.01em}
+.brand__name b{color:var(--accent-text);font-weight:600}
+.brand__sub{font-size:12px;line-height:16px;color:var(--ink-3)}
+.actions{display:flex;gap:8px;align-items:center}
+.btn{font:inherit;font-weight:500;font-size:13px;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:transparent;color:var(--ink);cursor:pointer;transition:background .12s}
+.btn:hover{background:var(--surface-3)}
+.btn--icon{width:36px;padding:0;justify-content:center}
+.btn:focus-visible,summary:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+/* header */
+.head{padding:36px 0 24px}
+.over{display:inline-flex;align-items:center;gap:6px;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ia)}
+h1{font-size:30px;line-height:38px;font-weight:600;letter-spacing:-.02em;margin:6px 0 8px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--ink-2);font-size:13px;line-height:18px}
+.meta span{display:inline-flex;align-items:center;gap:6px}
+/* grid */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:20px;margin-bottom:20px}
+.s12{grid-column:span 12}.s8{grid-column:span 8}.s7{grid-column:span 7}.s6{grid-column:span 6}.s5{grid-column:span 5}.s4{grid-column:span 4}
+.card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:20px;min-width:0}
+.card__h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.card__t{font-size:16px;line-height:24px;font-weight:600;display:flex;align-items:center;gap:8px}
+.card__d{font-size:13px;line-height:18px;color:var(--ink-2);margin-top:2px}
+/* hero */
+.hero{background:var(--hero-bg);color:#fff;border-radius:14px;padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:20px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-60px;top:-80px;width:260px;height:260px;border-radius:50%;background:radial-gradient(closest-side,rgba(59,130,224,.45),transparent);pointer-events:none}
+.hero__l{font-size:13px;color:var(--soft-blue)}
+.hero__v{font-size:40px;line-height:48px;font-weight:600;letter-spacing:-.02em;margin-top:4px}
+.hero__s{font-size:13px;color:var(--soft-blue);margin-top:4px}
+.hero__row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;position:relative;z-index:1}
+.pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:999px;background:var(--soft-blue);color:#1a2b6b;font-size:12px;font-weight:600;white-space:nowrap}
+.hero__split{display:grid;grid-template-columns:1fr 1fr;gap:12px;position:relative;z-index:1}
+.hero__tile{background:rgba(255,255,255,.08);border-radius:10px;padding:12px 14px}
+.hero__tile .k{font-size:12px;color:var(--soft-blue);display:flex;align-items:center;gap:6px}
+.hero__tile .v{font-size:18px;font-weight:600;margin-top:2px}
+/* ai summary */
+.ai{background:var(--ia-soft);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.ai__h{display:flex;align-items:center;gap:8px;color:var(--ia);font-weight:600;font-size:13px}
+.ai p{font-size:15px;line-height:24px;color:var(--ink)}
+.ai .risk-line{font-size:13px;line-height:20px;color:var(--ink-2)}
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--surface-2);border-radius:10px;padding:14px 16px}
+.kpi .k{font-size:12px;line-height:16px;color:var(--ink-2);font-weight:500}
+.kpi .v{font-size:22px;line-height:28px;font-weight:600;margin-top:6px}
+.kpi .s{font-size:12px;line-height:16px;color:var(--ink-3);margin-top:2px}
+/* badges */
+.badge,.tag{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+.badge--success{background:var(--success-soft);color:var(--success)}
+.badge--warning{background:var(--warning-soft);color:var(--warning)}
+.badge--danger{background:var(--danger-soft);color:var(--danger)}
+.badge--neutral,.tag--neutral{background:var(--surface-3);color:var(--ink-2)}
+.badge--ia{background:var(--ia-soft);color:var(--ia)}
+.tag--rep{background:var(--dir-rep-soft);color:var(--dir-rep)}
+.tag--prod{background:var(--dir-prod-soft);color:var(--dir-prod)}
+.diff{font-weight:600}.diff.is-rep{color:var(--dir-rep)}.diff.is-prod{color:var(--dir-prod)}
+/* direction */
+.dirbar{display:flex;gap:2px;height:14px;border-radius:999px;overflow:hidden;background:var(--chart-track)}
+.dirbar i{display:block;height:100%}
+.dirbar .rep{background:var(--dir-rep)}.dirbar .prod{background:var(--accent)}
+.dircols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.dircol{background:var(--surface-2);border-radius:10px;padding:14px 16px}
+.dircol__h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.dircol__v{font-size:20px;line-height:28px;font-weight:600}
+.dircol__s{font-size:12px;color:var(--ink-3);margin-bottom:8px}
+.mini{list-style:none}
+.mini li{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
+.mini li span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.mini .more{color:var(--ink-3);font-size:12px}
+/* risk meter */
+.meter{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:18px 0 8px}
+.meter i{display:block;height:10px;border-radius:999px;background:var(--chart-track)}
+.meter i.on.success{background:var(--success)}.meter i.on.warning{background:var(--warning)}.meter i.on.danger{background:var(--danger)}
+.meter-l{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:11px;line-height:14px;color:var(--ink-3)}
+.meter-l b{display:block;color:var(--ink-2);font-weight:500}
+.meter-l .cur b{color:var(--ink);font-weight:600}
+.riskv{display:flex;align-items:baseline;gap:10px}
+.riskv .v{font-size:32px;line-height:40px;font-weight:600}
+/* bars */
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar{display:grid;grid-template-columns:minmax(120px,240px) 1fr 120px;gap:12px;align-items:center;font-size:13px}
+.bar__n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.bar__t{height:12px;border-radius:999px;background:var(--chart-track);overflow:hidden}
+.bar__t i{display:block;height:100%;border-radius:999px}
+.bar__t .rep{background:var(--dir-rep)}.bar__t .prod{background:var(--accent)}
+.bar .num{text-align:right}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.note{font-size:12px;color:var(--ink-3);margin-top:12px}
+/* table */
+.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.tbl th{font-size:12px;line-height:16px;font-weight:500;color:var(--ink-2);text-align:left;padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl th:first-child{border-top-left-radius:10px}.tbl th:last-child{border-top-right-radius:10px}
+.tbl td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover td{background:var(--surface-3)}
+.tbl .r{text-align:right}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.av{width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;font-size:12px;font-weight:600;flex-shrink:0}
+.who b{font-weight:500;display:block}
+.who small{font-size:12px;color:var(--ink-3)}
+.muted{color:var(--ink-2)}
+/* accordion */
+.acc{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--surface)}
+.acc summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 16px}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary:hover{background:var(--surface-3)}
+.acc .grow{flex:1;min-width:0}
+.acc .chev{color:var(--ink-3);transition:transform .2s}
+.acc[open] .chev{transform:rotate(180deg)}
+.acc__b{padding:4px 16px 16px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
+.tile .k{font-size:12px;color:var(--ink-2)}.tile .v{font-size:15px;font-weight:600;margin-top:2px}
+.empty{padding:16px;text-align:center;color:var(--ink-3);font-size:13px;background:var(--surface-2);border-radius:10px}
+/* types */
+.type{padding:14px 0;border-top:1px solid var(--line)}
+.type:first-child{border-top:none;padding-top:0}
+.type__h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.type__n{font-weight:600}
+.type__bar{height:8px;border-radius:999px;background:var(--chart-track);overflow:hidden;margin-bottom:8px}
+.type__bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.type p{font-size:13px;line-height:20px;color:var(--ink-2)}
+.type p b{color:var(--ink);font-weight:500}
+/* action plan */
+.step{display:grid;grid-template-columns:32px 1fr auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.step:first-child{border-top:none;padding-top:0}
+.step__n{width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;font-weight:600;font-size:13px}
+.step__t{font-weight:500;line-height:20px}
+.step__m{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:6px;font-size:12px;color:var(--ink-2)}
+.step__m span{display:inline-flex;align-items:center;gap:5px}
+/* lists */
+.li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);font-size:13px;line-height:20px;color:var(--ink-2)}
+.li:first-child{border-top:none;padding-top:0}
+.li .ic{margin-top:2px}
+.li--ia .ic{color:var(--ia)}.li--warn .ic{color:var(--warning)}.li--ok .ic{color:var(--success)}
+.conc{margin-top:20px;background:var(--accent-soft);border-radius:10px;padding:16px;font-size:14px;line-height:22px}
+.conc b{color:var(--accent-text);font-weight:600}
+/* footer */
+.foot{border-top:1px solid var(--line);margin-top:12px;padding:20px 0 40px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;font-size:12px;color:var(--ink-3)}
+.foot .brand__name{font-size:14px}
+.disclaimer{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--ink-3);margin-top:4px}
+/* responsive */
+@media (max-width:1023px){.s8,.s7,.s6,.s5,.s4{grid-column:span 12}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:719px){
+  .wrap{padding:0 16px}.top .wrap{height:56px}.brand__sub{display:none}.btn .lbl{display:none}.btn{width:40px;height:40px;padding:0;justify-content:center}
+  h1{font-size:22px;line-height:28px}.head{padding:24px 0 16px}.grid{gap:12px;margin-bottom:12px}.card{padding:16px}
+  .hero__v{font-size:30px;line-height:38px}.hero__row{flex-direction:column-reverse}.card__h{flex-wrap:wrap}.hero__split,.dircols,.tiles{grid-template-columns:1fr}
+  .bar{grid-template-columns:1fr auto;gap:4px 12px}.bar__t{grid-column:1/-1;grid-row:2}
+  .tbl thead{display:none}.tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+  .tbl tr{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px}
+  .tbl td{border:none;padding:6px 0;display:flex;justify-content:space-between;gap:12px;text-align:right}
+  .tbl td::before{content:attr(data-l);color:var(--ink-3);font-size:12px;text-align:left}
+  .tbl td.first{display:block;text-align:left}.tbl td.first::before{content:none}
+  .tbl tbody tr:hover td{background:none}
+  .step{grid-template-columns:32px 1fr}.step .badge{grid-column:2;justify-self:start}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media print{
+  :root,[data-theme]{color-scheme:light;--bg:#fff;--surface:#fff;--surface-2:#f6f7fa;--surface-3:#eef0f5;--line:#e4e6ec;--ink:#16171a;--ink-2:#4a4e59;--ink-3:#646978;--accent:#1e63c4;--accent-text:#0b55b8;--accent-soft:#e6f0fc;--success:#137535;--success-soft:#e6f5eb;--warning:#8f5a06;--warning-soft:#fcf2dc;--danger:#b42331;--danger-soft:#fdecee;--ia:#7c3aed;--ia-soft:#f2ecfe;--dir-rep:#b4500e;--dir-rep-soft:#fdeee3;--dir-prod:#0b55b8;--dir-prod-soft:#e6f0fc;--chart-track:#e3e6ee;--shadow:0 0 0 1px #e4e6ec}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:12px}
+  .top{position:static;backdrop-filter:none}.actions{display:none}
+  .card,.hero,.ai,.acc,.step,.type{break-inside:avoid}
+  .acc summary .chev{display:none}
+  .wrap{max-width:none;padding:0}
+  @page{margin:14mm}
+}`;
+
+const SCRIPT = `(function(){var d=document.documentElement;
+function set(t){d.setAttribute("data-theme",t);try{localStorage.setItem("cs-report-theme",t)}catch(e){}var b=document.getElementById("tt");if(b){b.setAttribute("aria-label",t==="dark"?"Usar tema claro":"Usar tema escuro");b.innerHTML=t==="dark"?b.dataset.sun:b.dataset.moon}}
+try{var s=localStorage.getItem("cs-report-theme");if(s)set(s)}catch(e){}
+document.addEventListener("click",function(e){var t=e.target.closest("[data-act]");if(!t)return;var a=t.getAttribute("data-act");
+if(a==="theme")set(d.getAttribute("data-theme")==="dark"?"light":"dark");
+if(a==="print")window.print();
+if(a==="expand"){var all=document.querySelectorAll("details.acc");var open=Array.prototype.some.call(all,function(x){return!x.open});all.forEach(function(x){x.open=open});t.querySelector(".lbl").textContent=open?"Recolher todos":"Expandir todos"}});
+var prev=[];window.addEventListener("beforeprint",function(){prev=[];document.querySelectorAll("details.acc").forEach(function(x){prev.push(x.open);x.open=true})});
+window.addEventListener("afterprint",function(){document.querySelectorAll("details.acc").forEach(function(x,i){x.open=!!prev[i]})});
+set(d.getAttribute("data-theme")||"dark")})();`;
+
+/**
+ * Monta o HTML do relatório IA no visual do design system.
+ * opts: { logoDataUrl, responsavel, theme: 'dark'|'light', now: Date }
+ */
+export function buildReportHTML(res, ai = {}, opts = {}) {
+  const now = opts.now instanceof Date ? opts.now : new Date();
+  const theme = opts.theme === "light" ? "light" : "dark";
+  const divs = Array.isArray(res?.divergencias) ? res.divergencias : [];
+  const totalMed = Number(res?.totalMedicos) || 0;
+  const comDiv = Number(res?.medicosComDivergencia) || divs.length;
+  const pct = totalMed ? Math.round((comDiv / totalMed) * 100) : 0;
+  const risk = RISK.find((r) => pct < r.max) || RISK[RISK.length - 1];
+  const riskIdx = RISK.indexOf(risk);
+
+  const sobre = divs.filter((d) => d.sentido === "rep_maior");
+  const sub = divs.filter((d) => d.sentido === "prod_maior");
+  const vS = sobre.reduce((s, d) => s + (Number(d.diferencaRaw) || 0), 0);
+  const vU = sub.reduce((s, d) => s + (Number(d.diferencaRaw) || 0), 0);
+  const totalRaw = vS + vU;
+  const shareS = totalRaw ? Math.round((vS / totalRaw) * 100) : 0;
+
+  const tf = {};
+  divs.flatMap((d) => (d.detalhes || []).map((p) => p.tipo)).forEach((t) => { if (t) tf[t] = (tf[t] || 0) + 1; });
+  const tipos = Object.entries(tf).sort((a, b) => b[1] - a[1]);
+  const totalTipos = tipos.reduce((s, [, n]) => s + n, 0);
+
+  const ref = capitalize(res?.referencia || "Auditoria");
+  const proc = splitProcessed(res?.processadoEm);
+  const gerado = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} às ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const logo = opts.logoDataUrl
+    ? `<img src="${esc(opts.logoDataUrl)}" alt="">`
+    : `<span class="brand__mark">${icon("activity", 20)}</span>`;
+  const brand = (sub = true) => `<div class="brand">${logo}<div><div class="brand__name">Con<b>Saúde</b></div>${sub ? '<div class="brand__sub">Auditoria financeira</div>' : ""}</div></div>`;
+
+  // Direção
+  const miniList = (list) => {
+    if (!list.length) return '<ul class="mini"><li><span>Nenhum médico nesta direção</span></li></ul>';
+    const items = list.slice(0, 5).map((d) => `<li><span title="${esc(d.medico)}">${esc(titleCase(d.medico))}</span>${diffValue(docDiff(d))}</li>`).join("");
+    const more = list.length > 5 ? `<li><span class="more">e mais ${plural(list.length - 5, "médico", "médicos")} na tabela abaixo</span></li>` : "";
+    return `<ul class="mini">${items}${more}</ul>`;
+  };
+
+  // Barras por médico
+  const BAR_LIMIT = 12;
+  const maxRaw = Math.max(1, ...divs.map((d) => Number(d.diferencaRaw) || 0));
+  const bars = divs.slice(0, BAR_LIMIT).map((d) => {
+    const n = docDiff(d); const w = Math.max(2, Math.round(((Number(d.diferencaRaw) || 0) / maxRaw) * 100));
+    return `<div class="bar"><span class="bar__n" title="${esc(d.medico)}">${esc(titleCase(d.medico))}</span><span class="bar__t"><i class="${n > 0 ? "rep" : "prod"}" style="width:${w}%"></i></span>${diffValue(n)}</div>`;
   }).join("");
 
-  const dCards = res.divergencias.map(d=>{
-    const ir=d.sentido==="rep_maior"; const dH=ir?"#ef4444":"#f59e0b"; const dR=ir?"239,68,68":"245,158,11";
-    const pR=d.detalhes.map(p=>`<tr class="ptr"><td class="tpn">${esc(p.paciente)}</td><td class="tms">${esc(p.producao)}</td><td class="tms">${esc(p.repasse)}</td><td class="tms" style="color:${dH};font-weight:700">${esc(p.diferenca)}</td><td><span class="tb">${esc(p.tipo)}</span></td></tr>`).join("");
-    return `<details class="dc"><summary class="ds"><div class="dl"><div class="da" style="background:rgba(${dR},.18);color:${dH}">${esc(d.medico.charAt(0))}</div><div><div class="dn2">${esc(d.medico)}</div><div class="dsb">${d.detalhes.length} paciente${d.detalhes.length!==1?"s":""} divergente${d.detalhes.length!==1?"s":""}</div></div></div><div class="dr2"><div class="dd2" style="color:${dH}">${ir?"↑Rep":"↑Prod"} ${esc(d.diferenca)}</div><div class="ddi" style="color:${dH}">${ir?"repasse maior":"produção maior"}</div></div><span class="dch">▾</span></summary><div class="db2"><div class="dmet"><div class="dm" style="border-color:rgba(244,121,32,.3)"><div class="dml">Produção</div><div class="dmv" style="color:#F47920">${esc(d.producao)}</div></div><div class="dm" style="border-color:rgba(16,185,129,.3)"><div class="dml">Repasse</div><div class="dmv" style="color:#10b981">${esc(d.repasse)}</div></div><div class="dm" style="border-color:rgba(${dR},.3)"><div class="dml">Diferença</div><div class="dmv" style="color:${dH}">${esc(d.diferenca)}</div></div></div>${d.detalhes.length?`<div style="overflow-x:auto"><table class="pt"><thead><tr><th>Paciente</th><th>Produção</th><th>Repasse</th><th>Diferença</th><th>Tipo</th></tr></thead><tbody>${pR}</tbody></table></div>`:'<div class="nd">Comparação por paciente não disponível.</div>'}</div></details>`;
+  // Tabela de prioridades
+  const rows = divs.map((d, i) => {
+    const n = docDiff(d); const p = prioridade(Number(d.diferencaRaw) || 0); const np = (d.detalhes || []).length;
+    const acao = d.sentido === "rep_maior" ? "Revisar lançamentos no repasse" : "Verificar ausências no repasse";
+    return `<tr>
+<td class="first"><div class="who"><span class="av">${esc(initials(d.medico))}</span><div style="min-width:0"><b title="${esc(d.medico)}">${i + 1}. ${esc(titleCase(d.medico))}</b><small>${np ? plural(np, "paciente divergente", "pacientes divergentes") : "Sem detalhe por paciente"}</small></div></div></td>
+<td class="r num" data-l="Produção">${esc(d.producao)}</td>
+<td class="r num" data-l="Repasse">${esc(d.repasse)}</td>
+<td class="r" data-l="Diferença">${diffValue(n)}</td>
+<td data-l="Direção">${dirTag(n)}</td>
+<td data-l="Prioridade">${badge(p.tone, p.label)}</td>
+<td class="muted" data-l="Ação sugerida">${acao}</td></tr>`;
   }).join("");
 
-  const aItems = (ai.planoDeAcao||[]).map((it,i)=>{
-    const u=it.urgencia==="alta"?{h:"#ef4444",r:"239,68,68"}:it.urgencia==="media"?{h:"#f59e0b",r:"245,158,11"}:{h:"#64748b",r:"100,116,139"};
-    return `<div class="ai2"><div class="an" style="background:${u.h}">${i+1}</div><div class="ab"><div class="at2">${esc(it.acao)}</div><div class="am"><span>⏱ ${esc(it.prazo)}</span><span>👤 ${esc(it.responsavel)}</span><span>📈 ${esc(it.impacto)}</span></div></div><span class="ub" style="background:rgba(${u.r},.13);color:${u.h}">${(it.urgencia||"").toUpperCase()}</span></div>`;
-  }).join()||'<div class="es">Não disponível.</div>';
-
-  const patCards = pK.map((t,i)=>{
-    const fd=(ai.analisesPorTipo||[]).find(a=>a.tipo===t)||{}; const c=PC[i%PC.length];
-    return `<div class="pkc"><div class="pkh"><span class="pkn" style="background:${c}22;color:${c}">${tf[t]}×</span><strong class="pkt">${esc(t)}</strong></div>${fd.interpretacao?`<p class="pktx"><strong>Significado:</strong> ${esc(fd.interpretacao)}</p>`:""}${fd.prevencao?`<p class="pktx"><strong>Prevenção:</strong> ${esc(fd.prevencao)}</p>`:""}</div>`;
+  // Detalhe por médico
+  const detail = divs.map((d) => {
+    const n = docDiff(d); const det = d.detalhes || [];
+    const pr = det.map((p) => {
+      const pn = patDiff(p);
+      return `<tr><td class="first" data-l="Paciente"><span title="${esc(p.paciente)}">${esc(titleCase(p.paciente))}</span></td><td class="r num" data-l="Produção">${esc(p.producao)}</td><td class="r num" data-l="Repasse">${esc(p.repasse)}</td><td class="r" data-l="Diferença">${diffValue(pn)}</td><td data-l="Tipo">${badge("neutral", p.tipo || "—")}</td></tr>`;
+    }).join("");
+    return `<details class="acc"><summary><span class="av">${esc(initials(d.medico))}</span><span class="grow"><b style="font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.medico)}">${esc(titleCase(d.medico))}</b><small style="color:var(--ink-3);font-size:12px">${det.length ? plural(det.length, "paciente divergente", "pacientes divergentes") : "Sem detalhe por paciente"}</small></span>${diffValue(n)}<span class="chev">${icon("chevron", 18)}</span></summary>
+<div class="acc__b"><div class="tiles"><div class="tile"><div class="k">Produção</div><div class="v num">${esc(d.producao)}</div></div><div class="tile"><div class="k">Repasse</div><div class="v num">${esc(d.repasse)}</div></div><div class="tile"><div class="k">Diferença</div><div class="v">${diffValue(n)}</div></div></div>
+${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Tipo</th></tr></thead><tbody>${pr}</tbody></table>` : '<div class="empty">A comparação por paciente não foi feita nesta auditoria.</div>'}</div></details>`;
   }).join("");
 
-  const iList = (ai.insights||[]).map(s=>`<div class="ii"><div class="id2"></div>${esc(s)}</div>`).join()||'<div class="es">Não disponível.</div>';
-  const aList = (ai.anomalias||[]).map(s=>`<div class="al"><span class="ai3">⚠</span>${esc(s)}</div>`).join()||'<div class="es">Não disponível.</div>';
-  const rList = (ai.recomendacoes||[]).map(s=>`<div class="rl"><span class="ri">✓</span>${esc(s)}</div>`).join()||'<div class="es">Não disponível.</div>';
+  // Tipos
+  const analises = Array.isArray(ai.analisesPorTipo) ? ai.analisesPorTipo : [];
+  const typeCards = tipos.map(([t, n]) => {
+    const fd = analises.find((a) => a?.tipo === t) || {};
+    const w = totalTipos ? Math.round((n / totalTipos) * 100) : 0;
+    return `<div class="type"><div class="type__h"><span class="type__n">${esc(t)}</span><span class="num muted">${plural(n, "ocorrência", "ocorrências")} · ${w}%</span></div><div class="type__bar"><i style="width:${Math.max(2, w)}%"></i></div>${fd.interpretacao ? `<p><b>O que significa:</b> ${esc(fd.interpretacao)}</p>` : ""}${fd.prevencao ? `<p style="margin-top:4px"><b>Como prevenir:</b> ${esc(fd.prevencao)}</p>` : ""}</div>`;
+  }).join("");
 
-  const pieD = JSON.stringify(Object.values(tf));
+  // Plano de ação
+  const plano = (Array.isArray(ai.planoDeAcao) ? ai.planoDeAcao : []).map((it, i) => {
+    const u = URGENCIA[String(it?.urgencia || "").toLowerCase()] || { label: capitalize(it?.urgencia || "—"), tone: "neutral" };
+    return `<div class="step"><span class="step__n">${i + 1}</span><div><div class="step__t">${esc(it?.acao)}</div><div class="step__m">${it?.prazo ? `<span>${icon("clock", 14)}${esc(it.prazo)}</span>` : ""}${it?.responsavel ? `<span>${icon("user", 14)}${esc(it.responsavel)}</span>` : ""}${it?.impacto ? `<span>${icon("trend", 14)}${esc(it.impacto)}</span>` : ""}</div></div>${badge(u.tone, `Urgência ${u.label.toLowerCase()}`)}</div>`;
+  }).join("");
+
+  const list = (arr, cls, ic) => (Array.isArray(arr) && arr.length
+    ? arr.map((s) => `<div class="li ${cls}">${icon(ic, 16)}<span>${esc(s)}</span></div>`).join("")
+    : '<div class="empty">A IA não retornou itens para esta seção.</div>');
+
+  const card = (span, title, desc, body, ic, right = "") => `<section class="card ${span}"><div class="card__h"><div><h2 class="card__t">${ic ? icon(ic, 18) : ""}${title}</h2>${desc ? `<p class="card__d">${desc}</p>` : ""}</div>${right}</div>${body}</section>`;
+
+  const semDiv = divs.length === 0;
 
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="${theme}">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Auditoria Médica — ${esc(res.referencia)}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"><\/script>
-<style>${css}</style>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relatório IA — ${esc(ref)} · ConSaúde</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+${opts.logoDataUrl ? `<link rel="icon" href="${esc(opts.logoDataUrl)}">` : ""}
+<style>${CSS}</style>
 </head>
 <body>
-<div class="hero"><div class="page">
-<div class="hlogo"><div class="hli"><img src="https://postimg.cc/ygp5Y8dY" alt="ConSaúde" style="width:100%;height:100%;object-fit:contain"></div><div><div class="hlt">ConSaude</div><div class="hls">Sistema de Auditoria Médica</div></div></div>
-<div class="hw">
-<div>
-  <div class="hp">Referência: ${esc(res.referencia)}</div>
-  <h1 class="ht">Relatório de Auditoria</h1>
-  <p class="hs">${esc(ai.resumoExecutivo||"Auditoria de produção médica concluída com sucesso.")}</p>
-  <div class="hm"><span>📅 ${esc(res.processadoEm)}</span><span>📁 ${esc(res.file1Name)} × ${esc(res.file2Name)}</span></div>
-</div>
-<div class="rb" style="background:rgba(${rRgb},.15);color:${rHex};border:1.5px solid rgba(${rRgb},.35)">RISCO ${rLbl}</div>
-</div>
-</div></div>
+<header class="top"><div class="wrap">${brand()}
+<div class="actions">
+<button class="btn btn--icon" id="tt" type="button" data-act="theme" aria-label="Alternar tema" data-sun="${esc(icon("sun", 18))}" data-moon="${esc(icon("moon", 18))}">${icon(theme === "dark" ? "sun" : "moon", 18)}</button>
+<button class="btn" type="button" data-act="print">${icon("printer", 16)}<span class="lbl">Imprimir ou salvar PDF</span></button>
+</div></div></header>
 
-<div class="page">
-
-<div class="s"><div class="st">Dashboard Executivo</div><div class="ss">Visão geral — ${esc(res.referencia)}</div><div class="mg">${mCards}</div></div>
-
-<div class="s"><div class="st">Análise Direcional</div><div class="ss">Distribuição do risco por tipo de desvio financeiro</div>
-<div class="dg">
-<div class="dc2" style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25)">
-  <div class="dc2t" style="color:#ef4444">🔴 Repasse &gt; Produção</div>
-  <div class="dc2c" style="color:#ef4444">${brl(vS)}</div>
-  <div class="dc2s" style="color:rgba(239,68,68,.8)">${sobre.length} médico${sobre.length!==1?"s":""} — risco de sobrepagamento</div>
-  ${sL}
-</div>
-<div class="dc2" style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25)">
-  <div class="dc2t" style="color:#f59e0b">🟡 Produção &gt; Repasse</div>
-  <div class="dc2c" style="color:#f59e0b">${brl(vU)}</div>
-  <div class="dc2s" style="color:rgba(245,158,11,.8)">${sub.length} médico${sub.length!==1?"s":""} — risco de subpagamento</div>
-  ${uL}
-</div>
-</div></div>
-
-<div class="s"><div class="st">Medidor de Risco</div><div class="ss">${esc(ai.interpretacaoRisco||"Percentual de médicos com divergências de faturamento.")}</div>
-<div class="gw">
-<svg class="gs" viewBox="0 0 200 110">
-  <path d="M 16 100 A 84 84 0 0 1 184 100" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="14" stroke-linecap="round"/>
-  <path d="M 16 100 A 84 84 0 0 1 76 19.3" fill="none" stroke="#10b981" stroke-width="14" stroke-linecap="round" opacity=".9"/>
-  <path d="M 76 19.3 A 84 84 0 0 1 124 19.3" fill="none" stroke="#f59e0b" stroke-width="14" opacity=".9"/>
-  <path d="M 124 19.3 A 84 84 0 0 1 184 100" fill="none" stroke="${rHex}" stroke-width="14" stroke-linecap="round" opacity=".9"/>
-  <line x1="100" y1="100" x2="${nx}" y2="${ny}" stroke="white" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="100" cy="100" r="6" fill="${rHex}" stroke="rgba(0,0,0,.3)" stroke-width="1"/>
-  <circle cx="100" cy="100" r="3" fill="white"/>
-  <text x="100" y="84" text-anchor="middle" font-size="20" font-weight="900" fill="${rHex}" font-family="monospace">${pct}%</text>
-</svg>
-<div class="gt">
-  <div class="gp" style="color:${rHex}">${pct}%</div>
-  <div class="gl" style="color:${rHex}">RISCO ${rLbl}</div>
-  <p class="gi">${esc(ai.interpretacaoRisco||"Percentual de médicos com divergências identificadas na auditoria.")}</p>
-  <div class="gle">
-    <div class="gli"><div class="gld" style="background:#10b981"></div>Baixo (&lt;10%)</div>
-    <div class="gli"><div class="gld" style="background:#f59e0b"></div>Médio (10–25%)</div>
-    <div class="gli"><div class="gld" style="background:#f97316"></div>Alto (25–50%)</div>
-    <div class="gli"><div class="gld" style="background:#ef4444"></div>Crítico (&gt;50%)</div>
-  </div>
-</div>
-</div></div>
-
-<div class="s"><div class="st">Valor Divergente por Médico</div>
-<div class="ss" style="display:flex;gap:16px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#ef4444;display:inline-block"></span>Repasse &gt; Produção</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#f59e0b;display:inline-block"></span>Produção &gt; Repasse</span></div>
-<div style="position:relative;height:${chartH}px"><canvas id="bc"></canvas></div></div>
-
-<div class="s">
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px">
-  <div><div class="st">Tabela de Prioridades</div><div class="ss" style="margin-bottom:0">${res.medicosComDivergencia} médico${res.medicosComDivergencia!==1?"s":""} — ordenado${res.medicosComDivergencia!==1?"s":""} por valor</div></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <span class="pb" style="background:rgba(239,68,68,.13);color:#ef4444">Alta &gt;R$500</span>
-    <span class="pb" style="background:rgba(245,158,11,.13);color:#f59e0b">Média R$100–500</span>
-    <span class="pb" style="background:rgba(100,116,139,.13);color:#64748b">Baixa &lt;R$100</span>
-  </div>
-</div>
-<div class="tw"><table class="mt">
-<thead><tr><th style="text-align:center">#</th><th>Médico</th><th>Produção</th><th>Repasse</th><th>Diferença</th><th>Direção</th><th style="text-align:center">Pac.</th><th>Prioridade</th><th>Ação Recomendada</th></tr></thead>
-<tbody>${tR}</tbody>
-</table></div></div>
-
-<div class="s"><div class="st">Detalhamento por Médico</div><div class="ss">Clique para expandir — análise por paciente</div>${dCards}</div>
-
-<div class="s"><div class="st">Análise de Padrões</div><div class="ss">Distribuição e interpretação dos tipos de divergência encontrados</div>
-<div class="pl">
-<div class="pie-c"><canvas id="pc"></canvas></div>
-<div>${patCards}</div>
-</div></div>
-
-<div class="s"><div class="st">Plano de Ação Imediata</div><div class="ss">Ações concretas ordenadas por urgência</div>${aItems}</div>
-
-<div class="s"><div class="st">Insights &amp; Recomendações</div><div class="ss">Análise gerada por IA com base nos dados desta auditoria</div>
-<div class="ig">
-<div><div class="ict">💡 Insights</div>${iList}</div>
-<div><div class="ict">⚠ Anomalias Detectadas</div>${aList}</div>
-</div>
-<div style="margin-top:22px"><div class="ict">✅ Recomendações de Processo</div>${rList}</div>
-${ai.conclusao?'<div class="conc">📋 <strong>Conclusão:</strong> '+esc(ai.conclusao)+'</div>':""}
+<main class="wrap">
+<div class="head">
+<span class="over">${icon("sparkles", 14)}Relatório IA · Auditoria</span>
+<h1>${esc(ref)}</h1>
+<div class="meta"><span>${icon("clock", 14)}Processada em ${esc(proc.date)}${proc.time ? ` às ${esc(proc.time)}` : ""}</span>${res?.file1Name || res?.file2Name ? `<span>${icon("file", 14)}${esc(res.file1Name || "—")} × ${esc(res.file2Name || "—")}</span>` : ""}${opts.responsavel ? `<span>${icon("user", 14)}Responsável: ${esc(opts.responsavel)}</span>` : ""}</div>
 </div>
 
-<div class="ftr"><div class="fl">⚕ ConSaude Auditoria Médica</div><div>Gerado em ${esc(res.processadoEm)} · v1.0</div><div style="text-align:right">Uso interno e confidencial</div></div>
-
+<div class="grid">
+<section class="hero s7" aria-label="Resumo financeiro">
+<div class="hero__row"><div><div class="hero__l">Valor divergente total</div><div class="hero__v num">${esc(res?.valorTotal || money(totalRaw))}</div><div class="hero__s">em ${count(comDiv)} de ${count(totalMed)} médicos analisados · ${plural(Number(res?.totalDivergencias) || 0, "divergência", "divergências")}</div></div><span class="pill">${icon("shield", 14)}Risco ${risk.label.toLowerCase()}</span></div>
+<div class="hero__split"><div class="hero__tile"><div class="k">${icon("up", 14)}Repasse maior</div><div class="v num">${money(vS)}</div></div><div class="hero__tile"><div class="k">${icon("down", 14)}Produção maior</div><div class="v num">${money(vU)}</div></div></div>
+</section>
+<section class="ai s5" aria-label="Resumo da IA">
+<div class="ai__h">${icon("sparkles", 16)}Resumo executivo da IA</div>
+<p>${esc(ai.resumoExecutivo || (semDiv ? "Nenhuma divergência encontrada entre Produção e Repasse nesta auditoria." : "Auditoria de produção médica concluída."))}</p>
+${ai.interpretacaoRisco ? `<div class="risk-line">${esc(ai.interpretacaoRisco)}</div>` : ""}
+</section>
 </div>
-<script>
-(function(){
-Chart.defaults.color="rgba(148,163,184,.8)";
-Chart.defaults.borderColor="rgba(255,255,255,.06)";
-Chart.defaults.font.family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
-new Chart(document.getElementById("bc").getContext("2d"),{
-  type:"bar",
-  data:{labels:${bN},datasets:[{data:${bV},backgroundColor:${bBg},borderColor:${bBd},borderWidth:1,borderRadius:5,borderSkipped:false}]},
-  options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return" R$ "+c.parsed.x.toLocaleString("pt-BR",{minimumFractionDigits:2});}}}},scales:{x:{beginAtZero:true,grid:{color:"rgba(255,255,255,.05)"},ticks:{callback:function(v){return"R$ "+v.toLocaleString("pt-BR");}}},y:{grid:{display:false},ticks:{font:{size:11}}}}}
-});
-new Chart(document.getElementById("pc").getContext("2d"),{
-  type:"doughnut",
-  data:{labels:${JSON.stringify(pK)},datasets:[{data:${pieD},backgroundColor:${JSON.stringify(pColS)},borderColor:"rgba(5,13,26,.85)",borderWidth:3,hoverOffset:10}]},
-  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{padding:14,boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:function(c){var t=c.dataset.data.reduce(function(a,b){return a+b;},0);return" "+c.label+": "+c.parsed+" ("+Math.round(c.parsed/t*100)+"%)";}}}}  ,cutout:"65%"}
-});
-})();
-<\/script>
+
+<div class="grid">
+${card("s12", "Visão geral", "", `<div class="kpis">
+<div class="kpi"><div class="k">Médicos analisados</div><div class="v num">${count(totalMed)}</div><div class="s">no cruzamento Produção × Repasse</div></div>
+<div class="kpi"><div class="k">Médicos com divergência</div><div class="v num">${count(comDiv)}</div><div class="s">${pct}% dos médicos analisados</div></div>
+<div class="kpi"><div class="k">Total de divergências</div><div class="v num">${count(res?.totalDivergencias)}</div><div class="s">itens a revisar</div></div>
+<div class="kpi"><div class="k">Tipos de divergência</div><div class="v num">${count(tipos.length)}</div><div class="s">${tipos[0] ? `mais comum: ${esc(tipos[0][0])}` : "sem detalhe por paciente"}</div></div>
+</div>`)}
+</div>
+
+<div class="grid">
+${card("s7", "Direção das divergências", "Diferença = Repasse − Produção, por médico. Repasse maior = pago a mais; Produção maior = pago a menos.", `
+<div class="dirbar" role="img" aria-label="Repasse maior ${shareS}%, Produção maior ${totalRaw ? 100 - shareS : 0}%">${totalRaw ? `<i class="rep" style="width:${shareS}%"></i><i class="prod" style="width:${100 - shareS}%"></i>` : ""}</div>
+<div class="dircols">
+<div class="dircol"><div class="dircol__h">${dirTag(1)}<span class="num muted">${shareS}%</span></div><div class="dircol__v num">${money(vS)}</div><div class="dircol__s">${plural(sobre.length, "médico", "médicos")} · pago a mais</div>${miniList(sobre)}</div>
+<div class="dircol"><div class="dircol__h">${dirTag(-1)}<span class="num muted">${totalRaw ? 100 - shareS : 0}%</span></div><div class="dircol__v num">${money(vU)}</div><div class="dircol__s">${plural(sub.length, "médico", "médicos")} · pago a menos</div>${miniList(sub)}</div>
+</div>`, "")}
+${card("s5", "Nível de risco", "Percentual de médicos com divergência nesta auditoria.", `
+<div class="riskv"><span class="v num">${pct}%</span>${badge(risk.tone, `Risco ${risk.label.toLowerCase()}`, risk.tone === "success" ? "check" : "alert")}</div>
+<div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-valuetext="${pct}% — risco ${risk.label.toLowerCase()}">${RISK.map((r, i) => `<i class="${i <= riskIdx ? `on ${risk.tone}` : ""}"></i>`).join("")}</div>
+<div class="meter-l">${RISK.map((r, i) => `<span class="${i === riskIdx ? "cur" : ""}"><b>${r.label}</b>${r.range}</span>`).join("")}</div>
+${ai.interpretacaoRisco ? `<p class="card__d" style="margin-top:16px">${esc(ai.interpretacaoRisco)}</p>` : ""}`, "")}
+</div>
+
+${semDiv ? "" : `<div class="grid">
+${card("s12", "Maiores diferenças por médico", divs.length > BAR_LIMIT ? `Os ${BAR_LIMIT} maiores valores. Todos os ${count(divs.length)} médicos estão na tabela abaixo.` : "Valor da diferença de cada médico com divergência.", `<div class="bars">${bars}</div>`, "", `<div class="legend"><span><i style="background:var(--dir-rep)"></i>Repasse maior</span><span><i style="background:var(--accent)"></i>Produção maior</span></div>`)}
+</div>
+
+<div class="grid">
+${card("s12", "Prioridades", `${plural(divs.length, "médico com divergência", "médicos com divergência")}, do maior para o menor valor. Prioridade: alta acima de R$ 500, média de R$ 100 a R$ 500, baixa abaixo de R$ 100.`, `<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Médico</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Direção</th><th>Prioridade</th><th>Ação sugerida</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
+</div>
+
+<div class="grid">
+${card("s12", "Detalhamento por médico", "Abra um médico para ver cada paciente divergente.", detail, "", `<button class="btn" type="button" data-act="expand">${icon("expand", 16)}<span class="lbl">Expandir todos</span></button>`)}
+</div>`}
+
+<div class="grid">
+${tipos.length ? card("s6", "Tipos de divergência", "Quantas vezes cada tipo aparece e o que a IA sugere para evitar.", typeCards, "") : ""}
+${card(tipos.length ? "s6" : "s12", `Plano de ação <span class="badge badge--ia" style="margin-left:4px">${icon("sparkles", 14)}IA</span>`, "Ações sugeridas pela IA, em ordem de urgência.", plano || '<div class="empty">A IA não retornou ações para esta auditoria.</div>', "list")}
+</div>
+
+<div class="grid">
+${card("s4", "Insights", "", list(ai.insights, "li--ia", "sparkles"), "")}
+${card("s4", "Pontos de atenção", "", list(ai.anomalias, "li--warn", "alert"), "")}
+${card("s4", "Recomendações", "", list(ai.recomendacoes, "li--ok", "check"), "")}
+${ai.conclusao ? `<section class="card s12"><div class="ai__h">${icon("sparkles", 16)}Conclusão da IA</div><p style="margin-top:8px;font-size:15px;line-height:24px">${esc(ai.conclusao)}</p><div class="disclaimer" style="margin-top:12px">${icon("alert", 14)}Análise gerada por IA a partir dos números desta auditoria. Confira os valores antes de agir.</div></section>` : ""}
+</div>
+
+<footer class="foot">${brand(false)}<span>Gerado em ${esc(gerado)}${opts.responsavel ? ` · Responsável: ${esc(opts.responsavel)}` : ""}</span><span>Uso interno e confidencial</span></footer>
+</main>
+<script>${SCRIPT}<\/script>
 </body>
 </html>`;
 }
 
-export async function generateAIReport(resultados) {
+/** Logo (public/logo-mark.png) reduzida para 96px e embutida como data URL. Falha → null (usa o marcador). */
+async function loadLogoDataUrl() {
+  try {
+    const base = (import.meta.env && import.meta.env.BASE_URL) || "/";
+    const resp = await fetch(`${base}logo-mark.png`);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    try {
+      const bmp = await createImageBitmap(blob);
+      const size = 96;
+      const c = document.createElement("canvas");
+      c.width = size; c.height = size;
+      const scale = Math.min(size / bmp.width, size / bmp.height);
+      const w = bmp.width * scale, h = bmp.height * scale;
+      c.getContext("2d").drawImage(bmp, (size - w) / 2, (size - h) / 2, w, h);
+      return c.toDataURL("image/png");
+    } catch {
+      return await new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(typeof r.result === "string" ? r.result : null);
+        r.onerror = () => resolve(null);
+        r.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    return null;
+  }
+}
+
+export async function generateAIReport(resultados, opts = {}) {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   if (!apiKey || apiKey.includes("cole_sua")) {
     throw new Error("Configure VITE_OPENAI_API_KEY no arquivo .env com sua chave da OpenAI.");
   }
-  const ai = await fetchAIAnalysis(resultados, apiKey);
-  return buildReportHTML(resultados, ai);
+  const [ai, logoDataUrl] = await Promise.all([fetchAIAnalysis(resultados, apiKey), loadLogoDataUrl()]);
+  const theme = opts.theme || (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "dark";
+  return buildReportHTML(resultados, ai, { ...opts, logoDataUrl, theme });
 }

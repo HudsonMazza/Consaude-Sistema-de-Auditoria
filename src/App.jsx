@@ -275,7 +275,7 @@ export default function App() {
     setAiHidden(false);
     setAiError(null);
     try {
-      const html = await generateAIReport(resultados);
+      const html = await generateAIReport(resultados, { responsavel: getExportOptions(currentUser).responsavel });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url  = URL.createObjectURL(blob);
       window.open(url, "_blank");
