@@ -1,11 +1,9 @@
-// Marca provisória do ConSaúde. Ainda não existe logo oficial: o nome em Inter ("Con" + "Saúde" em accent-text)
-// e o quadrado accent-fill com o ícone `activity` são o placeholder do design system. Troque SÓ aqui quando
-// o logo oficial existir.
+// Marca do ConSaúde: símbolo oficial (public/logo-mark.png, gerado a partir de public/logo.png) + nome em Inter.
 import React from 'react';
-import { Icon, cx } from './core.jsx';
+import { cx } from './core.jsx';
 
 export function BrandMark({ size = 'md' }) {
-  return <span className={cx('cs-brand__mark', size === 'sm' && 'cs-brand__mark--sm')} aria-hidden="true"><Icon name="activity" /></span>;
+  return <span className={cx('cs-brand__mark', 'cs-brand__mark--logo', size === 'sm' && 'cs-brand__mark--sm')} aria-hidden="true"><img src="/logo-mark.png" alt="" width="36" height="36" /></span>;
 }
 
 export function BrandName() {
