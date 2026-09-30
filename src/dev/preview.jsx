@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import '../styles/tokens.css';
 import '../styles/components.css';
 import '../styles/app.css';
+import '../styles/motion.css';
 import AppLayout from '../components/AppLayout.jsx';
 import { ToastProvider } from '../components/Toaster.jsx';
 import { AiProgressModal } from '../components/ds/index.js';

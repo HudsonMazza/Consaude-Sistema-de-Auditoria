@@ -4,7 +4,7 @@ import { summarizeAudits } from '../dashboard';
 import {
   Button, IconButton, Card, HeroKpi, KpiGroup, KpiCard, SegmentedMeter, Legend, BarChart, DonutChart, RankingList,
   DataTable, ResultBadge, SegmentedControl, SheetSelect, PageHeader, Callout, EmptyState, ErrorState, Skeleton,
-  formatBRL, formatNumber, formatPercent, titleCase, useViewport,
+  formatBRL, formatNumber, formatPercent, titleCase, useViewport, AnimatedNumber,
 } from '../components/ds/index.js';
 import { auditTime, auditValue, auditMonthKey, hasDifferences, auditItemCount, capitalize } from '../lib/display.js';
 
@@ -74,7 +74,7 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
       {mobileFilters}
       <div className="cs-grid cs-grid--stretch">
         <div className="cs-span-4 cs-md-6">
-          <HeroKpi label={`Valor divergente · ${months} meses`} icon="banknote" value={formatBRL(m.divergentValue)}
+          <HeroKpi label={`Valor divergente · ${months} meses`} icon="banknote" value={<AnimatedNumber value={m.divergentValue} format={formatBRL} />}
             meta={<span>{formatNumber(m.totalDifferences)} {m.totalDifferences === 1 ? 'divergência' : 'divergências'} em {formatNumber(m.audits)} {m.audits === 1 ? 'auditoria' : 'auditorias'}</span>}
             topAction={<IconButton icon="arrow-up-right" label="Ver auditorias" onClick={onShowAudits} />}
             actions={<>
@@ -84,9 +84,9 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
         </div>
         <Card className="cs-span-5 cs-md-12" title="Resumo do período" subtitle={`${formatNumber(m.audits)} ${m.audits === 1 ? 'auditoria processada' : 'auditorias processadas'}`}>
           <KpiGroup columns={compact ? 2 : 3}>
-            <KpiCard label="Concluídas" value={formatNumber(m.audits)} icon="clipboard-check" hint={months === 1 ? 'Último mês' : `Últimos ${months} meses`} />
-            <KpiCard label="Com divergência" value={formatNumber(m.auditsWithDifferences)} icon="triangle-alert" tone="danger" hint={`${formatNumber(m.differenceRate)}% das auditorias`} />
-            <KpiCard label="Divergências" value={formatNumber(m.totalDifferences)} icon="list-checks" hint="Registros para revisão" />
+            <KpiCard label="Concluídas" value={<AnimatedNumber value={m.audits} format={formatNumber} />} icon="clipboard-check" hint={months === 1 ? 'Último mês' : `Últimos ${months} meses`} />
+            <KpiCard label="Com divergência" value={<AnimatedNumber value={m.auditsWithDifferences} format={formatNumber} />} icon="triangle-alert" tone="danger" hint={`${formatNumber(m.differenceRate)}% das auditorias`} />
+            <KpiCard label="Divergências" value={<AnimatedNumber value={m.totalDifferences} format={formatNumber} />} icon="list-checks" hint="Registros para revisão" />
             {compact && <KpiCard label="Conformidade" value={m.audits ? formatPercent(conformity) : '—'} icon="scale" tone="success" hint={`${formatNumber(conformes)} de ${formatNumber(m.audits)} conformes`} />}
           </KpiGroup>
         </Card>

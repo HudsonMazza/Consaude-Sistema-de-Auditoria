@@ -23,7 +23,7 @@ export default function ProcessingPage({ steps, progress }) {
             <span className="cs-kpi__icon cs-kpi__icon--accent" aria-hidden="true"><Spinner /></span>
             <div style={{ minWidth: 0 }}>
               <p className="cs-section-title">Etapa {activeStep + 1} de {LABELS.length}</p>
-              <p className="cs-section-sub" aria-live="polite">{LABELS[activeStep]}</p>
+              <p className="cs-section-sub" aria-live="polite"><span className="cs-shimmer">{LABELS[activeStep]}…</span></p>
             </div>
           </div>
           <ProgressBar label="Progresso da auditoria" value={Math.round(progress)} />
@@ -36,7 +36,7 @@ export default function ProcessingPage({ steps, progress }) {
                   <span className="cs-step__mark" style={!completed && !active ? { fontSize: 12 } : undefined}>
                     {completed ? <Icon name="check" strokeWidth={2.4} /> : active ? <Spinner /> : index + 1}
                   </span>
-                  <span>{label}</span>
+                  <span className={active ? 'cs-shimmer' : undefined}>{label}</span>
                   {completed && <span className="cs-step__end">Concluído</span>}
                 </li>
               );

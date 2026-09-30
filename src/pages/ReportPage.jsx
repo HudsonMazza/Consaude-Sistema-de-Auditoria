@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Button, IconButton, Badge, Count, Card, HeroKpi, HeroChip, KpiGroup, KpiCard, SegmentedMeter, DataTable, Pagination,
-  StatusBadge, ResultBadge, DirectionTag, DiffValue, SearchField, FilterChips, EmptyState, ActionMenu, Drawer, Callout,
+  StatusBadge, ResultBadge, DirectionTag, DiffValue, SearchField, FilterChips, EmptyState, ActionMenu, Drawer, Callout, AnimatedNumber, BorderBeam,
   Icon, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
 import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
@@ -128,7 +128,10 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
                 trigger={(p) => <IconButton icon="chevron-down" label="Escolher formato de exportação" variant="secondary" {...p} />} />
             </span>
           )}
-          <Button variant="ia" onClick={onGenerateAI} disabled={aiLoading} loading={aiLoading}>{aiLoading ? 'Gerando relatório IA…' : 'Relatório IA'}</Button>
+          <Button variant="ia" onClick={onGenerateAI} disabled={aiLoading} loading={aiLoading}>
+            {aiLoading && <BorderBeam tone="ia" />}
+            {aiLoading ? <span className="cs-shimmer cs-shimmer--ia">Gerando relatório IA…</span> : 'Relatório IA'}
+          </Button>
           <ActionMenu items={more} label="Mais ações da auditoria" title="Ações da auditoria"
             trigger={(p) => <IconButton icon="ellipsis" label="Mais ações" variant="secondary" round {...p} />} />
         </div>
@@ -136,16 +139,16 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
 
       <div className="cs-grid cs-grid--stretch">
         <div className="cs-span-4 cs-md-6">
-          <HeroKpi label="Valor divergente total" icon="banknote" value={heroValue}
+          <HeroKpi label="Valor divergente total" icon="banknote" value={Number.isFinite(total) ? <AnimatedNumber value={total} format={formatBRL} /> : heroValue}
             chip={<HeroChip icon="triangle-alert">{formatNumber(Number(resultados.totalDivergencias) || 0)} {Number(resultados.totalDivergencias) === 1 ? 'divergência' : 'divergências'}</HeroChip>}
             meta={<span>em {formatNumber(resultados.medicosComDivergencia)} de {formatNumber(resultados.totalMedicos)} médicos analisados</span>}
             actions={<Button variant="light" size="sm" icon="copy" onClick={onCopySummary}>Copiar resumo</Button>} />
         </div>
         <Card className="cs-span-5 cs-md-12" title="Resumo">
           <KpiGroup columns={compact ? 2 : 3}>
-            <KpiCard label="Médicos" value={formatNumber(resultados.totalMedicos)} icon="stethoscope" hint="analisados" />
-            <KpiCard label="Com divergência" value={formatNumber(resultados.medicosComDivergencia)} icon="triangle-alert" tone="danger" hint={`${formatPercent(pctMedicos)} dos médicos`} />
-            <KpiCard label="Divergências" value={formatNumber(Number(resultados.totalDivergencias) || 0)} icon="list-checks" hint="itens a revisar" />
+            <KpiCard label="Médicos" value={<AnimatedNumber value={Number(resultados.totalMedicos) || 0} format={formatNumber} />} icon="stethoscope" hint="analisados" />
+            <KpiCard label="Com divergência" value={<AnimatedNumber value={Number(resultados.medicosComDivergencia) || 0} format={formatNumber} />} icon="triangle-alert" tone="danger" hint={`${formatPercent(pctMedicos)} dos médicos`} />
+            <KpiCard label="Divergências" value={<AnimatedNumber value={Number(resultados.totalDivergencias) || 0} format={formatNumber} />} icon="list-checks" hint="itens a revisar" />
             {compact && <KpiCard label="Revisão" value={`${formatNumber(reviewed)} de ${formatNumber(divs.length)}`} icon="circle-check" tone="success" hint={`${formatNumber(by('corrigido'))} corrigidos`} />}
           </KpiGroup>
         </Card>
