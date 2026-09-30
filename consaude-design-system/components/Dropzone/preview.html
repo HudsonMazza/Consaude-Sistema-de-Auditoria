@@ -1,0 +1,19 @@
+<!-- @dsCard group="Fluxo de upload" height=1088 subtitle="Um passo de upload: vazio, arrastando (glow), carregado (colunas reconhecidas), lendo, erro. Toque abre o seletor no celular" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dropzone — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Dropzone, UploadProgress } = C;
+const file = { name: "producao_set-2026.xlsx", size: 184320, rows: 1284, columns: ["Médico", "Paciente", "Data", "Valor"] };
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement(UploadProgress, { done: 1, total: 2 }), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-grid", style: { gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" } }, /* @__PURE__ */ React.createElement(Dropzone, { step: 1, title: "Relatório de Produção", subtitle: "Vazio" }), /* @__PURE__ */ React.createElement(Dropzone, { step: 2, title: "Relatório de Repasse", subtitle: "Arrastando", state: "dragover" }), /* @__PURE__ */ React.createElement(Dropzone, { step: 1, title: "Relatório de Produção", subtitle: "Carregado", file }), /* @__PURE__ */ React.createElement(Dropzone, { step: 2, title: "Relatório de Repasse", subtitle: "Lendo", state: "uploading" }), /* @__PURE__ */ React.createElement(Dropzone, { step: 2, title: "Relatório de Repasse", subtitle: "Erro", error: "Formato não suportado (.pdf). Envie .xlsx, .xls ou .csv." })))
+);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!-- @dsCard group="Feedback" height=668 subtitle="Vazio (primeiro uso), sem resultados (filtro) e erro com tentar novamente. Sempre o motivo e o próximo passo" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>EmptyState — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { EmptyState, ErrorState, Card, Button } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" } }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(EmptyState, { compact: true, icon: "clipboard-check", title: "Nenhuma auditoria ainda", actions: /* @__PURE__ */ React.createElement(Button, { variant: "primary", icon: "plus" }, "Nova auditoria") }, "Envie Produção e Repasse para a primeira comparação.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(EmptyState, { compact: true, icon: "search-x", title: "Nenhum médico encontrado", actions: /* @__PURE__ */ React.createElement(Button, { variant: "secondary" }, "Limpar filtros") }, "Nada corresponde a “Ricardo” em Corrigidos.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement(ErrorState, { compact: true, onRetry: () => {
+  } })))
+);
+})();
+</script>
+</body>
+</html>

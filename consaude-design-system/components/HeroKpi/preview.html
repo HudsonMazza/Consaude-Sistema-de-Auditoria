@@ -1,0 +1,29 @@
+<!-- @dsCard group="Indicadores" height=284 subtitle="O único número herói da tela, no card azul com ondas (referência: Current Balance). Até 2 ações e um chip de variação" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>HeroKpi — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { HeroKpi, HeroChip, Button, IconButton, formatBRL } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" } }, /* @__PURE__ */ React.createElement(
+    HeroKpi,
+    {
+      label: "Valor divergente · 6 meses",
+      icon: "banknote",
+      value: formatBRL(38521.16),
+      chip: /* @__PURE__ */ React.createElement(HeroChip, { icon: "trending-up" }, "8,2%"),
+      meta: "vs. 6 meses anteriores · 212 divergências",
+      topAction: /* @__PURE__ */ React.createElement(IconButton, { icon: "arrow-up-right", label: "Ver auditorias com divergência" }),
+      actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Button, { variant: "light", size: "sm", iconEnd: "arrow-right" }, "Abrir última"), /* @__PURE__ */ React.createElement(Button, { variant: "deep", size: "sm" }, "Ver auditorias"))
+    }
+  ), /* @__PURE__ */ React.createElement(HeroKpi, { label: "Valor divergente total", icon: "banknote", value: formatBRL(13846.55), chip: /* @__PURE__ */ React.createElement(HeroChip, { icon: "triangle-alert" }, "37 divergências"), meta: "em 11 de 42 médicos analisados", actions: /* @__PURE__ */ React.createElement(Button, { variant: "light", size: "sm", icon: "copy" }, "Copiar resumo") }))
+);
+})();
+</script>
+</body>
+</html>

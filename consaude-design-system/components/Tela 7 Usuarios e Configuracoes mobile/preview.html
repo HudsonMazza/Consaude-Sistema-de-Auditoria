@@ -1,0 +1,19 @@
+<!-- @dsCard group="Telas" page width=1360 height=960 subtitle="Usuários e Configurações · mobile — cards de usuário, ações em sheet, formulário em uma coluna com salvar fixo" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Usuarios e Configuracoes mobile — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { UsuariosScreen, ConfiguracoesScreen } = C.screens;
+const { Device } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-devices" }, /* @__PURE__ */ React.createElement(Device, { caption: "Usuários em cards" }, /* @__PURE__ */ React.createElement(UsuariosScreen, null)), /* @__PURE__ */ React.createElement(Device, { caption: "Ações do usuário", scrollTo: 330 }, /* @__PURE__ */ React.createElement(UsuariosScreen, { openActionsFor: "u3" })), /* @__PURE__ */ React.createElement(Device, { caption: "Configurações", scrollTo: 160 }, /* @__PURE__ */ React.createElement(ConfiguracoesScreen, null)))
+);
+})();
+</script>
+</body>
+</html>

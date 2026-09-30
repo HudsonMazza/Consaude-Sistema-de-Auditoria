@@ -1,0 +1,19 @@
+<!-- @dsCard group="Navegação" height=676 subtitle="Expandida (248px) e em trilho (76px). Item ativo em azul preenchido; contador de pendências; card Nova auditoria; Recolher" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sidebar — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Sidebar, ViewportProvider } = C;
+const vp = { width: 1440, bucket: "lg", compact: false };
+root.render(
+  /* @__PURE__ */ React.createElement(ViewportProvider, { value: vp }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { flexDirection: "row", gap: 32, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { className: "cs-app", style: { display: "block", minHeight: 0, width: 248, height: 620, "--cs-vh": "620px", borderRadius: 14, overflow: "hidden", boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Sidebar, { active: "dashboard" })), /* @__PURE__ */ React.createElement("div", { className: "cs-app", "data-nav": "rail", style: { display: "block", minHeight: 0, width: 76, height: 620, "--cs-vh": "620px", borderRadius: 14, overflow: "hidden", boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Sidebar, { active: "auditorias" }))))
+);
+})();
+</script>
+</body>
+</html>

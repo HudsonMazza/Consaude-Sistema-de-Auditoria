@@ -1,0 +1,16 @@
+<!-- @dsCard group="Telas" page width=1024 height=2390 subtitle="Dashboard · tablet 1024px — sidebar em trilho, grid de 12 colunas reorganizado em metades" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dashboard tablet — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { DashboardScreen } = C.screens;
+root.render(/* @__PURE__ */ React.createElement(DashboardScreen, null));
+})();
+</script>
+</body>
+</html>

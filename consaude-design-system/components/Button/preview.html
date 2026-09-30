@@ -1,0 +1,18 @@
+<!-- @dsCard group="Ações" height=616 subtitle="Pílula. Primário (1 por área), secundário, ghost, destrutivo, IA, exportar, link; tamanhos sm/md/lg; loading e desabilitado" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Button — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Button, HeroKpi } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Variantes"), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(Button, { variant: "primary", icon: "plus" }, "Nova auditoria"), /* @__PURE__ */ React.createElement(Button, { variant: "secondary" }, "Cancelar"), /* @__PURE__ */ React.createElement(Button, { variant: "ghost", iconEnd: "chevron-right" }, "Abrir"), /* @__PURE__ */ React.createElement(Button, { variant: "ia" }, "Relatório IA"), /* @__PURE__ */ React.createElement(Button, { variant: "export", icon: "file-spreadsheet" }, "Excel"), /* @__PURE__ */ React.createElement(Button, { variant: "danger", icon: "trash-2" }, "Excluir"), /* @__PURE__ */ React.createElement(Button, { variant: "danger-ghost", icon: "trash-2" }, "Excluir"), /* @__PURE__ */ React.createElement(Button, { variant: "link" }, "Ver todas"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Tamanhos"), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(Button, { variant: "primary", size: "sm", icon: "plus" }, "Pequeno · 32"), /* @__PURE__ */ React.createElement(Button, { variant: "primary", icon: "plus" }, "Médio · 40"), /* @__PURE__ */ React.createElement(Button, { variant: "primary", size: "lg", icon: "plus" }, "Grande · 44"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Estados"), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(Button, { variant: "primary", loading: true }, "Processando…"), /* @__PURE__ */ React.createElement(Button, { variant: "primary", disabled: true, icon: "refresh-cw" }, "Processar auditoria"), /* @__PURE__ */ React.createElement(Button, { variant: "secondary", disabled: true }, "Desabilitado"), /* @__PURE__ */ React.createElement(Button, { variant: "ia", loading: true }, "Gerando…"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Sobre o card herói (light e deep)"), /* @__PURE__ */ React.createElement("div", { style: { maxWidth: 420 } }, /* @__PURE__ */ React.createElement(HeroKpi, { label: "Valor divergente", value: "R$ 38.521,16", actions: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Button, { variant: "light", size: "sm", iconEnd: "arrow-right" }, "Abrir última"), /* @__PURE__ */ React.createElement(Button, { variant: "deep", size: "sm" }, "Ver auditorias")) }))))
+);
+})();
+</script>
+</body>
+</html>

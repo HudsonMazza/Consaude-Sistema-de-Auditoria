@@ -1,0 +1,18 @@
+<!-- @dsCard group="Dados" height=266 subtitle="Container padrão: título, subtítulo e ações. Variantes flush (tabelas), inset (bloco dentro de card) e glow (um destaque por tela)" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Card — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Card, Button, IconButton, Skeleton } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" } }, /* @__PURE__ */ React.createElement(Card, { title: "Maiores impactos", subtitle: "Médicos com maior valor divergente", actions: /* @__PURE__ */ React.createElement(IconButton, { icon: "arrow-up-right", label: "Ver ranking", size: "sm" }) }, /* @__PURE__ */ React.createElement(Skeleton, { width: "80%" }), /* @__PURE__ */ React.createElement(Skeleton, { width: "60%" }), /* @__PURE__ */ React.createElement(Skeleton, { width: "70%" })), /* @__PURE__ */ React.createElement(Card, { title: "Últimas auditorias", actions: /* @__PURE__ */ React.createElement(Button, { variant: "ghost", size: "sm", iconEnd: "arrow-right" }, "Ver todas"), footer: /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "cs-faint" }, "Atualizado agora"), /* @__PURE__ */ React.createElement(Button, { variant: "link", size: "sm" }, "Exportar")) }, /* @__PURE__ */ React.createElement(Skeleton, { width: "90%" }), /* @__PURE__ */ React.createElement(Skeleton, { width: "50%" })), /* @__PURE__ */ React.createElement(Card, { glow: true, title: "Destaque", subtitle: "shadow-glow — no máximo um por tela" }, /* @__PURE__ */ React.createElement(Card, { inset: true, title: "Inset", headingLevel: 3 }, /* @__PURE__ */ React.createElement(Skeleton, { width: "60%" }))))
+);
+})();
+</script>
+</body>
+</html>

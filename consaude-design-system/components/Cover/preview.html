@@ -1,0 +1,70 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>ConSaúde</title>
+<style>
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--ink); font-family:var(--font-sans); overflow:hidden; }
+  .cover { position:relative; width:960px; height:288px; overflow:hidden; }
+  .art { position:absolute; top:0; left:480px; width:480px; height:288px; overflow:hidden; }
+  .art svg { display:block; width:520px; height:288px; }
+  .brand { fill:var(--accent-fill); }
+  .tint { fill:var(--soft-blue); }
+  .deep { fill:var(--accent-deep); }
+  .warm { fill:var(--chart-3); }
+  .on { fill:var(--accent); }
+  .off { fill:var(--chart-track); }
+  .blk { rx:var(--radius-lg); }
+  .pill { rx:var(--radius-xs); }
+  .chip { rx:var(--radius-md); }
+  .words { position:absolute; left:var(--space-8); bottom:var(--space-8); max-width:440px; }
+  .name { margin:0; font-size:88px; line-height:.92; font-weight:600; letter-spacing:-.035em; color:var(--ink); }
+  .tag { margin:var(--space-3) 0 0 4px; font-size:14px; line-height:20px; color:var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 520 288" width="520" height="288">
+<!--
+  blocks      accent-fill 168×214 bled off the top (the hero card, primary and largest) · soft-blue 104×144 (the reference's Soft Blue) · accent-deep 200×216 bleeding off the right (the navy "Sent" button) · chart-3 64×24 once (orange only ever means "Repasse maior") — about a third of 960×288
+  arrangement one tall blue slab with satellites; bottoms of tint, deep block and pills on one line space-8 above the edge; space-4 gutters
+  pattern     vertical pills from the Finance Score segmented meter ("the reference's signature; taxa de conformidade / progresso da revisão"): 12 on the ground under the slab (9 accent, 3 chart-track) and 9 cut into the navy block (7 accent, 2 chart-track)
+  scales      sides in space-2 multiples; gutters space-4; pill pitch 14 = space-3 + 2px segment gap; corners radius-lg on blocks, radius-md on the orange chip, pills rx radius-xs (half of their 8px width)
+-->
+<rect class="brand blk" x="16" y="-14" width="168" height="214" rx="14"/>
+<rect class="tint blk" x="200" y="112" width="104" height="144" rx="14"/>
+<rect class="warm chip" x="200" y="72" width="64" height="24" rx="10"/>
+<rect class="deep blk" x="320" y="40" width="216" height="216" rx="14"/>
+<rect class="on pill" x="16" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="30" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="44" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="58" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="72" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="86" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="100" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="114" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="128" y="216" width="8" height="40" rx="4"/>
+<rect class="off pill" x="142" y="216" width="8" height="40" rx="4"/>
+<rect class="off pill" x="156" y="216" width="8" height="40" rx="4"/>
+<rect class="off pill" x="170" y="216" width="8" height="40" rx="4"/>
+<rect class="on pill" x="344" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="358" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="372" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="386" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="400" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="414" y="176" width="8" height="56" rx="4"/>
+<rect class="on pill" x="428" y="176" width="8" height="56" rx="4"/>
+<rect class="off pill" x="442" y="176" width="8" height="56" rx="4"/>
+<rect class="off pill" x="456" y="176" width="8" height="56" rx="4"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">ConSaúde</h1>
+<p class="tag">Auditoria financeira de produção médica: Produção × Repasse.</p>
+</div>
+</div>
+</body>
+</html>

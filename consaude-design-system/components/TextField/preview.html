@@ -1,0 +1,18 @@
+<!-- @dsCard group="Filtros e campos" height=466 subtitle="Rótulo visível, helper e erro com ícone (aria-describedby / aria-invalid). Prefixo, máscara de CNPJ, moeda em R$, checkbox e switch" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>TextField — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { TextField, MaskedField, CurrencyField, Checkbox, Switch } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-grid", style: { gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" } }, /* @__PURE__ */ React.createElement(TextField, { label: "Nome da clínica", defaultValue: "Clínica Integrada São Lucas" }), /* @__PURE__ */ React.createElement(TextField, { label: "Referência da auditoria", optional: true, placeholder: "Ex.: Setembro/2026", help: "Período ou competência.", prefixIcon: "calendar" }), /* @__PURE__ */ React.createElement(TextField, { label: "E-mail de relatórios", type: "email", defaultValue: "auditoria@clinica", error: "Informe um e-mail completo, ex.: nome@clinica.com.br", prefixIcon: "mail" }), /* @__PURE__ */ React.createElement(MaskedField, { mask: "cnpj", label: "CNPJ", defaultValue: "12345678000190" }), /* @__PURE__ */ React.createElement(CurrencyField, { label: "Tolerância de divergência", defaultValue: 0.5, help: "Diferenças até este valor contam como conformes." }), /* @__PURE__ */ React.createElement(TextField, { label: "Desabilitado", defaultValue: "Somente leitura", disabled: true })), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-grid", style: { gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" } }, /* @__PURE__ */ React.createElement(Checkbox, { defaultChecked: true, label: "Ignorar acentos e maiúsculas nos nomes", description: "“JOSÉ” e “Jose” contam como a mesma pessoa." }), /* @__PURE__ */ React.createElement(Checkbox, { label: "Considerar glosas do repasse" }), /* @__PURE__ */ React.createElement(Switch, { defaultChecked: true, label: "Enviar cópia por e-mail", description: "A cada exportação" })))
+);
+})();
+</script>
+</body>
+</html>

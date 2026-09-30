@@ -1,0 +1,25 @@
+<!-- @dsCard group="Ações" height=924 subtitle="Ações da linha: dropdown no desktop, action sheet no mobile — mesmos itens. Setas navegam, Esc fecha, destrutivo por último" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ActionMenu — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { ActionMenu, Device, ViewportProvider, Card, Button } = C;
+const items = [
+  { label: "Exportar Excel", icon: "file-spreadsheet", variant: "export" },
+  { label: "Exportar PDF", icon: "file-text" },
+  { label: "Ver relatório IA", icon: "sparkles", variant: "ia" },
+  { separator: true },
+  { label: "Excluir auditoria", icon: "trash-2", variant: "danger" }
+];
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { flexDirection: "row", gap: 48, alignItems: "flex-start", flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 360 } }, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Desktop · dropdown"), /* @__PURE__ */ React.createElement(Card, { title: "Agosto/2026", subtitle: "29/08/2026 · 28 divergências", actions: /* @__PURE__ */ React.createElement(ActionMenu, { items, label: "Ações de Agosto/2026", defaultOpen: true, autoFocus: false }) }, /* @__PURE__ */ React.createElement("div", { style: { height: 230 } }))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "cs-demo-label" }, "Mobile · action sheet"), /* @__PURE__ */ React.createElement(ViewportProvider, { value: { width: 390, bucket: "sm", compact: true } }, /* @__PURE__ */ React.createElement(Device, null, /* @__PURE__ */ React.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ React.createElement(Card, { title: "Agosto/2026", subtitle: "29/08/2026 · 28 divergências", actions: /* @__PURE__ */ React.createElement(ActionMenu, { items, label: "Ações de Agosto/2026", title: "Agosto/2026", defaultOpen: true, autoFocus: false }) }))))))
+);
+})();
+</script>
+</body>
+</html>

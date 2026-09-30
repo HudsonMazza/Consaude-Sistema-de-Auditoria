@@ -1,0 +1,16 @@
+<!-- @dsCard group="Telas" page width=1440 height=820 subtitle="Configurações · desktop — seções em duas colunas, CNPJ com máscara, tolerância em R$, barra de salvar fixa" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Configuracoes — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { ConfiguracoesScreen } = C.screens;
+root.render(/* @__PURE__ */ React.createElement(ConfiguracoesScreen, null));
+})();
+</script>
+</body>
+</html>

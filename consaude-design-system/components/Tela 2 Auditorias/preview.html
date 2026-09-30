@@ -1,0 +1,16 @@
+<!-- @dsCard group="Telas" page width=1440 height=1140 subtitle="Auditorias › Minhas auditorias · desktop — stat strip, busca + filtros rápidos, tabela com 1 ação visível + menu ⋯, paginação" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Auditorias — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { AuditoriasScreen } = C.screens;
+root.render(/* @__PURE__ */ React.createElement(AuditoriasScreen, { openActionsFor: "a22" }));
+})();
+</script>
+</body>
+</html>

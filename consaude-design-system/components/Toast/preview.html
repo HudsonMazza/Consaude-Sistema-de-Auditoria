@@ -1,0 +1,23 @@
+<!-- @dsCard group="Feedback" height=394 subtitle="Feedback passageiro: sucesso, erro (role=alert), aviso, info e IA; ação opcional (Desfazer). Canto inferior direito; acima da bottom nav no mobile" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Toast — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Toast, ToastStack } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement(ToastStack, { inline: true }, /* @__PURE__ */ React.createElement(Toast, { tone: "success", title: "Auditoria processada", action: { label: "Abrir" }, onClose: () => {
+  } }, "37 divergências em 11 médicos."), /* @__PURE__ */ React.createElement(Toast, { tone: "ia", title: "Relatório IA pronto", action: { label: "Ver" }, onClose: () => {
+  } }, "Setembro/2026 · 3 riscos priorizados."), /* @__PURE__ */ React.createElement(Toast, { tone: "info", title: "Resumo copiado", onClose: () => {
+  } }), /* @__PURE__ */ React.createElement(Toast, { tone: "warning", title: "Status alterado para Revisado", action: { label: "Desfazer" }, onClose: () => {
+  } }), /* @__PURE__ */ React.createElement(Toast, { tone: "error", title: "Não foi possível exportar", action: { label: "Tentar de novo" }, onClose: () => {
+  } }, "A conexão caiu durante o envio.")))
+);
+})();
+</script>
+</body>
+</html>

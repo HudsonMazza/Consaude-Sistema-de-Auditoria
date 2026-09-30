@@ -1,10 +1,17 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>ConSaúde · Auditoria de Produção Médica</title>
-    <link rel="icon" type="image/png" href="/public/logo.png" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <script>
+      // Aplica o tema salvo antes do primeiro paint (padrão: escuro).
+      try {
+        var t = localStorage.getItem('cs-theme');
+        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

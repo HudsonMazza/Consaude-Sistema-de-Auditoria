@@ -1,0 +1,20 @@
+<!-- @dsCard group="Gráficos" height=448 subtitle="Colunas empilhadas (azul + Soft Blue), mês em andamento hachurado, tooltip em hover/foco, alternância para tabela. Eixo em inteiros" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BarChart — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Card, BarChart, Legend, SegmentedControl, demo } = C;
+function Demo() {
+  const [v, setV] = React.useState("chart");
+  return /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement(Card, { title: "Auditorias por mês", subtitle: "Conformes e com divergência", actions: /* @__PURE__ */ React.createElement(SegmentedControl, { label: "Visualização", value: v, onChange: setV, options: [{ id: "chart", label: "Gráfico", icon: "chart-column" }, { id: "table", label: "Tabela", icon: "list-checks" }] }) }, /* @__PURE__ */ React.createElement(Legend, { items: [{ label: "Com divergência", swatch: "chart-1" }, { label: "Conformes", swatch: "chart-2" }, { label: "Mês em andamento", swatch: "hatch" }] }), /* @__PURE__ */ React.createElement(BarChart, { data: demo.MONTHLY, series: demo.MONTHLY_SERIES, height: 260, view: v, caption: "Auditorias por mês" })));
+}
+root.render(/* @__PURE__ */ React.createElement(Demo, null));
+})();
+</script>
+</body>
+</html>

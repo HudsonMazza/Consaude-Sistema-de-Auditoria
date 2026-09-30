@@ -1,0 +1,18 @@
+<!-- @dsCard group="Dados" height=202 subtitle="Pílulas de status e rótulo. Tons semânticos sempre com texto (e ícone quando é estado); contadores; resultado da auditoria; perfil" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Badge — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Badge, Count, ResultBadge, ProfileBadge } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { gap: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(Badge, null, "Neutro"), /* @__PURE__ */ React.createElement(Badge, { tone: "accent" }, "Sua conta"), /* @__PURE__ */ React.createElement(Badge, { tone: "success", icon: "circle-check" }, "Conforme"), /* @__PURE__ */ React.createElement(Badge, { tone: "warning", icon: "clock" }, "Pendente"), /* @__PURE__ */ React.createElement(Badge, { tone: "danger", icon: "triangle-alert" }, "Com divergência"), /* @__PURE__ */ React.createElement(Badge, { tone: "ia", icon: "sparkles" }, "IA"), /* @__PURE__ */ React.createElement(Badge, { tone: "outline" }, "Valor divergente"), /* @__PURE__ */ React.createElement(Badge, { tone: "muted" }, "Arquivado")), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(ResultBadge, { divergences: 37 }), /* @__PURE__ */ React.createElement(ResultBadge, { divergences: 1 }), /* @__PURE__ */ React.createElement(ResultBadge, { divergences: 0 }), /* @__PURE__ */ React.createElement(Badge, { tone: "ia", icon: "sparkles", size: "sm" }, "IA"), /* @__PURE__ */ React.createElement(Badge, { size: "sm", tone: "success", icon: "circle-check" }, "Carregado")), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(ProfileBadge, { profile: "admin" }), /* @__PURE__ */ React.createElement(ProfileBadge, { profile: "auditor" }), /* @__PURE__ */ React.createElement(ProfileBadge, { profile: "gestor" })), /* @__PURE__ */ React.createElement("div", { className: "cs-demo-row" }, /* @__PURE__ */ React.createElement(Count, null, "11"), /* @__PURE__ */ React.createElement(Count, { tone: "accent" }, "3"), /* @__PURE__ */ React.createElement(Count, { tone: "danger" }, "37")))
+);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!-- @dsCard group="Feedback" height=488 subtitle="Mensagem contextual em linha: info, sucesso, alerta, erro, IA e neutra. Ícone + título curto + texto; ação opcional" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Callout — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Callout, Button } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { maxWidth: 680, gap: 12 } }, /* @__PURE__ */ React.createElement(Callout, { tone: "info", title: "Como a tolerância funciona" }, "Com R$ 0,50, uma diferença de R$ 0,30 não vira divergência."), /* @__PURE__ */ React.createElement(Callout, { tone: "success", title: "Planilha válida" }, "1.284 linhas lidas, 5 colunas reconhecidas."), /* @__PURE__ */ React.createElement(Callout, { tone: "warning", title: "3 médicos sem correspondência", action: /* @__PURE__ */ React.createElement(Button, { variant: "secondary", size: "sm" }, "Revisar") }, "Nomes presentes só no repasse."), /* @__PURE__ */ React.createElement(Callout, { tone: "danger", title: "Arquivo corrompido" }, "Não conseguimos abrir repasse_set.xlsx. Exporte novamente do sistema de origem."), /* @__PURE__ */ React.createElement(Callout, { tone: "ia", title: "Sugestão da IA" }, "Priorize os 5 médicos com repasse maior: somam 72% do valor divergente."), /* @__PURE__ */ React.createElement(Callout, { tone: "neutral", icon: "arrow-up-right", title: "Repasse maior que a produção" }, "R$ 1.732,40 pagos a mais. Confirme com o faturamento antes de corrigir."))
+);
+})();
+</script>
+</body>
+</html>

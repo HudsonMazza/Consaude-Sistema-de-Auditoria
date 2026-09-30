@@ -1,0 +1,21 @@
+<!-- @dsCard group="Fluxo de upload" height=297 subtitle="Seções expansíveis com resumo do que está dentro (ex.: Opções de comparação). Botão com aria-expanded; várias abertas" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Accordion — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Accordion, CurrencyField, SelectField, Checkbox } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo", style: { maxWidth: 720 } }, /* @__PURE__ */ React.createElement(Accordion, { defaultOpen: ["opt"], items: [
+    { id: "opt", icon: "sliders-horizontal", title: "Opções de comparação", subtitle: "Tolerância R$ 0,50 · por médico e paciente", content: /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 } }, /* @__PURE__ */ React.createElement(CurrencyField, { label: "Tolerância desta auditoria", defaultValue: 0.5 }), /* @__PURE__ */ React.createElement(SelectField, { label: "Cruzar por", options: [{ value: "mp", label: "Médico + paciente + data" }] }), /* @__PURE__ */ React.createElement(Checkbox, { defaultChecked: true, label: "Ignorar acentos e maiúsculas" })) },
+    { id: "adv", icon: "list-checks", title: "Mapeamento de colunas", subtitle: "Detectado automaticamente", content: /* @__PURE__ */ React.createElement("p", { className: "cs-muted", style: { margin: 0 } }, "…") }
+  ] }))
+);
+})();
+</script>
+</body>
+</html>

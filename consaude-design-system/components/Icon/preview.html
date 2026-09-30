@@ -1,0 +1,18 @@
+<!-- @dsCard group="Base" height=984 subtitle="Lucide (ISC), traço 1.75, 20px padrão (16–22). Decorativo por padrão; passe label quando o ícone carrega sentido sozinho" -->
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Icon — ConSaúde</title></head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+const C = window.ConSaude;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+const { Icon, ICON_NAMES } = C;
+root.render(
+  /* @__PURE__ */ React.createElement("div", { className: "cs-demo" }, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 8 } }, ICON_NAMES.map((n) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "12px 4px", borderRadius: 10, background: "var(--surface)", boxShadow: "var(--shadow-card)" } }, /* @__PURE__ */ React.createElement(Icon, { name: n, size: 20 }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, lineHeight: "14px", color: "var(--ink-3)", textAlign: "center", wordBreak: "break-all" } }, n)))))
+);
+})();
+</script>
+</body>
+</html>

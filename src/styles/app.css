@@ -1,0 +1,93 @@
+/* ConSaúde — composições específicas do app sobre o design system.
+   Regra: só tokens (var(--…)); nenhuma cor literal aqui. */
+
+html { background: var(--bg); color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+body { min-height: 100dvh; }
+#root { min-height: 100dvh; }
+button, input, select, textarea { font-family: inherit; }
+
+/* ── Telas de autenticação (login, esqueci a senha, troca obrigatória, setup) ── */
+.cs-auth { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-6); padding: var(--space-10) var(--space-4); background: var(--bg); color: var(--ink); font-family: var(--font-sans); position: relative; }
+.cs-auth__theme { position: absolute; top: var(--space-4); right: var(--space-4); }
+.cs-auth__brand { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; }
+.cs-auth__brand .cs-brand { padding: 0; }
+.cs-auth__card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-8); }
+.cs-auth__head { display: flex; flex-direction: column; gap: var(--space-1); }
+.cs-auth__title { margin: 0; font: 600 20px/28px var(--font-sans); letter-spacing: -0.01em; color: var(--ink); }
+.cs-auth__sub { margin: 0; font-size: 14px; line-height: 20px; color: var(--ink-2); }
+.cs-auth__form { display: flex; flex-direction: column; gap: var(--space-4); }
+.cs-auth__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.cs-auth__foot { margin: 0; font-size: 12px; line-height: 16px; color: var(--ink-3); text-align: center; }
+.cs-auth__icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: var(--radius-full); }
+.cs-auth__icon--success { background: var(--success-soft); color: var(--success); }
+.cs-auth__icon--warning { background: var(--warning-soft); color: var(--warning); }
+.cs-auth code { font-family: var(--font-mono); font-size: 12px; padding: 1px 6px; border-radius: var(--radius-xs); background: var(--surface-2); color: var(--accent-text); }
+@media (max-width: 767px) {
+  .cs-auth { justify-content: flex-start; padding-top: var(--space-12); }
+  .cs-auth__card { padding: var(--space-6) var(--space-4); }
+  .cs-auth .cs-control { height: var(--control-lg); }
+  .cs-auth .cs-control__input { font-size: 16px; }
+  .cs-auth .cs-btn { --_h: var(--control-lg); }
+}
+
+/* Botão de ação em texto (links dentro de formulários). */
+.cs-linkbtn { border: 0; background: none; padding: 2px 0; font: 500 14px/20px var(--font-sans); color: var(--accent-text); cursor: pointer; border-radius: var(--radius-xs); text-decoration: none; }
+.cs-linkbtn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cs-linkbtn:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+
+/* ── Utilitários de composição ── */
+.cs-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+.cs-row--between { justify-content: space-between; }
+.cs-formgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-5); }
+.cs-formgrid > .cs-full { grid-column: 1 / -1; }
+.cs-app[data-layout="compact"] .cs-formgrid, .cs-overlay[data-compact="true"] .cs-formgrid { grid-template-columns: minmax(0, 1fr); }
+.cs-section-title { margin: 0; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.cs-section-sub { margin: 2px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-3); }
+.cs-divider { height: 1px; border: 0; margin: 0; background: var(--line); }
+.cs-card-toolbar { display: flex; flex-direction: column; gap: var(--space-3); padding: 0 var(--space-5) var(--space-4); }
+.cs-card-toolbar--top { padding-top: var(--space-5); }
+.cs-app[data-layout="compact"] .cs-card-toolbar { padding: 0 var(--space-4) var(--space-3); }
+.cs-app[data-layout="compact"] .cs-card-toolbar--top { padding-top: var(--space-4); }
+
+/* Escolha em cartão (perfil de acesso, primeiro acesso). */
+.cs-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.cs-overlay[data-compact="true"] .cs-choices { grid-template-columns: minmax(0, 1fr); }
+.cs-choice { position: relative; display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--line-strong); background: var(--field); cursor: pointer; text-align: left; color: var(--ink); font: inherit; border: 0; }
+.cs-choice[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.cs-choice:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+.cs-choice:disabled { cursor: not-allowed; opacity: .6; }
+.cs-choice__mark { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); display: grid; place-items: center; }
+.cs-choice[aria-checked="true"] .cs-choice__mark { box-shadow: inset 0 0 0 5px var(--accent-fill); }
+.cs-choice__title { display: block; font: 500 14px/20px var(--font-sans); }
+.cs-choice__text { display: block; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--ink-3); }
+
+/* Perfil: identidade */
+.cs-identity { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); }
+.cs-identity__photo { position: relative; }
+.cs-identity__photo .cs-avatar { width: 88px; height: 88px; font-size: 30px; }
+.cs-identity__busy { position: absolute; inset: 0; border-radius: var(--radius-full); display: grid; place-items: center; background: var(--scrim); color: var(--on-accent); }
+.cs-identity__name { margin: 0; font: 600 16px/24px var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
+.cs-identity__email { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-3); overflow-wrap: anywhere; }
+.cs-app[data-layout="compact"] .cs-identity { flex-direction: row; text-align: left; align-items: center; flex-wrap: wrap; }
+
+/* Insights (análise automática do relatório) */
+.cs-insights { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.cs-insight { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); color: var(--ink); font-size: 14px; line-height: 20px; }
+.cs-insight__dot { width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--accent); }
+.cs-insight .cs-iconbtn { margin: -6px 0; }
+
+/* Resumo de tipos no drawer */
+.cs-tipos { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Link "Pular para o conteúdo" (visível só no foco por teclado) */
+.cs-skip { position: absolute; left: var(--space-4); top: -60px; z-index: var(--z-toast); padding: var(--space-2) var(--space-4); border-radius: var(--radius-full); background: var(--accent-fill); color: var(--on-accent); font: 500 14px/20px var(--font-sans); text-decoration: none; }
+.cs-skip:focus { top: var(--space-2); }
+.cs-content:focus { outline: none; }
+
+/* Mobile: o bloco de títulos do PageHeader ocupa a largura toda (senão metadados longos, como nomes de arquivo, não truncam). */
+.cs-app[data-layout="compact"] .cs-pagehead__titles { width: 100%; max-width: 100%; }
+.cs-pagehead__meta > span { max-width: 100%; }
+.cs-stat__value small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Processamento da auditoria não é IA: etapa ativa em azul (o violeta fica reservado à IA). */
+.cs-steps--process .cs-step--active .cs-step__mark { color: var(--accent-text); }
