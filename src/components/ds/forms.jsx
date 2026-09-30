@@ -4,6 +4,7 @@
 // funcionais, colunas reconhecidas como objetos e slot para mensagens; SheetSelect (chip → sheet no mobile).
 import React, { useState, useId, useRef } from 'react';
 import { cx, Icon, Button, IconButton, Count, formatNumber, useViewport } from './core.jsx';
+import { BorderBeam, useSlidingIndicator } from './motion.jsx';
 import { BottomSheet } from './overlays.jsx';
 
 /* ───────── Tabs ───────── */
@@ -14,6 +15,9 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, fill = false, l
   // Clicar na aba já ativa não dispara onChange (evita recarregar/limpar a tela atual)
   const set = (id) => { if (id === cur) return; setInner(id); onChange && onChange(id); };
   const refs = useRef({});
+  const listRef = useRef(null);
+  // Animated Tabs: o sublinhado desliza até a aba ativa
+  const ink = useSlidingIndicator(listRef, '.cs-tab[aria-selected="true"]', [cur, tabs.length]);
   function onKey(e, i) {
     const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!dir) return;
@@ -23,7 +27,8 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, fill = false, l
     set(tabs[j].id); refs.current[tabs[j].id] && refs.current[tabs[j].id].focus();
   }
   return (
-    <div className={cx('cs-tabs', fill && 'cs-tabs--fill', className)} role="tablist" aria-label={label}>
+    <div ref={listRef} className={cx('cs-tabs', fill && 'cs-tabs--fill', ink && 'cs-tabs--ink', className)} role="tablist" aria-label={label}>
+      {ink && <span className="cs-tabs__ink" aria-hidden="true" style={{ width: ink.width, transform: `translateX(${ink.left}px)` }} />}
       {tabs.map((t, i) => (
         <button key={t.id} ref={(el) => (refs.current[t.id] = el)} role="tab" type="button" className="cs-tab" aria-selected={cur === t.id}
           tabIndex={cur === t.id ? 0 : -1} disabled={t.disabled} onClick={() => set(t.id)} onKeyDown={(e) => onKey(e, i)}>
@@ -72,8 +77,11 @@ export function SelectChip({ label, value, icon, ...rest }) {
 export function SegmentedControl({ options = [], value, defaultValue, onChange, label, block = false }) {
   const [inner, setInner] = useState(defaultValue || (options[0] && options[0].id));
   const cur = value !== undefined ? value : inner;
+  const segRef = useRef(null);
+  const pill = useSlidingIndicator(segRef, '.cs-seg__opt[aria-checked="true"]', [cur, options.length]);
   return (
-    <div className={cx('cs-seg', block && 'cs-seg--block')} role="radiogroup" aria-label={label}>
+    <div ref={segRef} className={cx('cs-seg', block && 'cs-seg--block', pill && 'cs-seg--pill')} role="radiogroup" aria-label={label}>
+      {pill && <span className="cs-seg__pill" aria-hidden="true" style={{ top: pill.top, height: pill.height, width: pill.width, transform: `translateX(${pill.left}px)` }} />}
       {options.map((o) => (
         <button key={o.id} type="button" role="radio" aria-checked={cur === o.id} className="cs-seg__opt" onClick={() => { setInner(o.id); onChange && onChange(o.id); }}>
           {o.icon && <Icon name={o.icon} size={16} />}{o.label}
@@ -231,7 +239,16 @@ export function Callout({ tone = 'info', title, children, icon, action, classNam
 export function EmptyState({ icon = 'inbox', title, children, actions, tone, compact = false }) {
   return (
     <div className={cx('cs-empty', tone === 'error' && 'cs-empty--error', compact && 'cs-empty--compact')} role={tone === 'error' ? 'alert' : undefined}>
-      <span className="cs-empty__glyph"><Icon name={icon} /></span>
+      {compact || tone === 'error'
+        ? <span className="cs-empty__glyph"><Icon name={icon} /></span>
+        : (
+          // Interactive Empty State: o ícone da situação na frente, dois cartões atrás que se abrem no hover
+          <span className="cs-empty__stack" aria-hidden="true">
+            <span className="cs-empty__side cs-empty__side--l"><Icon name="file-spreadsheet" /></span>
+            <span className="cs-empty__side cs-empty__side--r"><Icon name="file-text" /></span>
+            <span className="cs-empty__main"><Icon name={icon} /></span>
+          </span>
+        )}
       <h3 className="cs-empty__title">{title}</h3>
       {children && <p className="cs-empty__text">{children}</p>}
       {actions && <div className="cs-empty__actions">{actions}</div>}
@@ -276,7 +293,7 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
           <span className="cs-file__icon"><Icon name="file-spreadsheet" /></span>
           <div className="cs-file__body">
             <span className="cs-file__name cs-truncate" title={file.name}>{file.name}</span>
-            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{reading && <span>Lendo planilha…</span>}{file.rows != null && (file.rows > 0 && !invalid
+            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{reading && <span className="cs-shimmer">Lendo planilha…</span>}{file.rows != null && (file.rows > 0 && !invalid
               ? <span className="ok"><Icon name="check" />{formatNumber(file.rows)} {file.rows === 1 ? 'linha lida' : 'linhas lidas'}</span>
               : <span>{file.rows === 0 ? 'Nenhuma linha de dados' : `${formatNumber(file.rows)} ${file.rows === 1 ? 'linha lida' : 'linhas lidas'}`}</span>)}</span>
           </div>
@@ -297,6 +314,7 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
         <label className="cs-drop__zone" htmlFor={inputId}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files[0]); }}>
+          {state === 'dragover' && <BorderBeam tone="accent" duration={2.2} />}
           <input id={inputId} type="file" accept={accept} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; pick(f); }} aria-describedby={inputId + 'h'} aria-invalid={state === 'error' || undefined} />
           <span className="cs-drop__glyph"><Icon name={state === 'error' ? 'file-x' : state === 'uploading' ? 'loader-circle' : 'cloud-upload'} className={state === 'uploading' ? 'cs-spin' : undefined} /></span>
           {state === 'dragover' ? <span className="cs-drop__cta">Solte para carregar</span>

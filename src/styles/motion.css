@@ -1,0 +1,93 @@
+/* ConSaúde — movimento (componentes adaptados do 21st.dev). Discreto, com significado, e desligado em
+   "reduzir movimento". Só tokens do design system: nada de cor solta. */
+
+/* ───────── Text Shimmer: texto de algo em andamento (etapa atual, "Lendo planilha…", IA) ───────── */
+.cs-shimmer {
+  background: linear-gradient(90deg, var(--ink-3) 38%, var(--ink) 50%, var(--ink-3) 62%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  animation: cs-shimmer 1.6s linear infinite;
+}
+.cs-shimmer--ia { background-image: linear-gradient(90deg, var(--ia) 30%, var(--ink) 50%, var(--ia) 70%); }
+@keyframes cs-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* ───────── Border Beam: luz percorrendo a borda (IA gerando, arquivo sendo solto) ───────── */
+@property --cs-beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.cs-beam {
+  position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 1;
+  background: conic-gradient(from var(--cs-beam-angle), transparent 0 62%, var(--_beam) 80%, color-mix(in srgb, var(--_beam) 40%, transparent) 90%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: cs-beam var(--cs-beam-duration, 2.6s) linear infinite;
+}
+.cs-beam--accent { --_beam: var(--accent-text); }
+.cs-beam--ia { --_beam: var(--ia); }
+@keyframes cs-beam { to { --cs-beam-angle: 360deg; } }
+
+/* ───────── Animated Tabs: sublinhado que desliza até a aba ativa ───────── */
+.cs-tabs { position: relative; }
+.cs-tabs__ink {
+  position: absolute; bottom: 0; left: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent);
+  transition: transform var(--duration-base, 200ms) var(--ease-standard, ease), width var(--duration-base, 200ms) var(--ease-standard, ease);
+  pointer-events: none;
+}
+.cs-tabs--ink .cs-tab[aria-selected="true"]::after { display: none; } /* o indicador que desliza substitui o estático */
+
+/* Segmented control: a "pílula" ativa desliza entre as opções */
+.cs-seg { position: relative; }
+.cs-seg__pill {
+  position: absolute; border-radius: var(--radius-full); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent);
+  transition: transform var(--duration-base, 200ms) var(--ease-standard, ease), width var(--duration-base, 200ms) var(--ease-standard, ease);
+  pointer-events: none; z-index: 0;
+}
+.cs-seg--pill .cs-seg__opt { position: relative; z-index: 1; }
+.cs-seg--pill .cs-seg__opt[aria-checked="true"] { background: transparent; box-shadow: none; }
+
+/* ───────── Task Steps: marca que "salta" ao concluir e check que se desenha ───────── */
+.cs-step { transition: color var(--duration-base, 200ms), background-color var(--duration-base, 200ms); }
+.cs-step--done .cs-step__mark { animation: cs-pop 420ms cubic-bezier(.34, 1.56, .64, 1) both; }
+.cs-step--done .cs-step__mark .cs-icon :is(path, polyline) { stroke-dasharray: 24; stroke-dashoffset: 24; animation: cs-draw 360ms 120ms ease-out forwards; }
+.cs-step--error .cs-step__mark { animation: cs-pop 420ms cubic-bezier(.34, 1.56, .64, 1) both; }
+.cs-step__end { animation: cs-fade-in var(--duration-base, 200ms) ease both; }
+@keyframes cs-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes cs-draw { to { stroke-dashoffset: 0; } }
+@keyframes cs-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ───────── Empty state: ícones empilhados que se abrem ao passar o mouse ───────── */
+.cs-empty__stack { position: relative; display: grid; place-items: center; width: 132px; height: 72px; margin-bottom: var(--space-3); }
+.cs-empty__stack > span {
+  position: absolute; display: grid; place-items: center; width: 52px; height: 60px; border-radius: var(--radius-md);
+  background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2);
+  transition: transform var(--duration-slow, 320ms) cubic-bezier(.34, 1.56, .64, 1);
+}
+.cs-empty__stack > span .cs-icon { width: 22px; height: 22px; }
+.cs-empty__stack .cs-empty__side { color: var(--ink-3); }
+.cs-empty__stack .cs-empty__side--l { transform: translateX(-26px) rotate(-8deg); }
+.cs-empty__stack .cs-empty__side--r { transform: translateX(26px) rotate(8deg); }
+.cs-empty__stack .cs-empty__main { z-index: 1; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-strong), var(--shadow-pop, 0 8px 24px rgba(0,0,0,.18)); color: var(--accent-text); }
+.cs-empty:hover .cs-empty__side--l { transform: translateX(-38px) translateY(2px) rotate(-14deg); }
+.cs-empty:hover .cs-empty__side--r { transform: translateX(38px) translateY(2px) rotate(14deg); }
+.cs-empty:hover .cs-empty__main { transform: translateY(-4px); }
+
+/* ───────── Upload: ícone sobe no hover, "respira" durante o arrasto; arquivo entra suave ───────── */
+.cs-drop__glyph { transition: transform var(--duration-base, 200ms) var(--ease-standard, ease), background-color var(--duration-fast, 120ms), color var(--duration-fast, 120ms); }
+.cs-drop__zone:hover .cs-drop__glyph { transform: translateY(-3px); }
+.cs-drop--dragover .cs-drop__glyph { animation: cs-float 1.1s ease-in-out infinite; }
+.cs-drop--dragover .cs-drop__zone { box-shadow: none; border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.cs-file { animation: cs-rise var(--duration-slow, 320ms) var(--ease-standard, ease) both; }
+@keyframes cs-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes cs-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ───────── Reduzir movimento: nada anima; texto e indicadores no estado final ───────── */
+@media (prefers-reduced-motion: reduce) {
+  .cs-shimmer { animation: none; background: none; color: var(--ink); }
+  .cs-shimmer--ia { color: var(--ia); }
+  .cs-beam { display: none; }
+  .cs-tabs__ink, .cs-seg__pill, .cs-empty__stack > span, .cs-drop__glyph { transition: none; }
+  .cs-step--done .cs-step__mark, .cs-step--error .cs-step__mark, .cs-step__end, .cs-file, .cs-drop--dragover .cs-drop__glyph { animation: none; }
+  .cs-step--done .cs-step__mark .cs-icon :is(path, polyline) { animation: none; stroke-dashoffset: 0; }
+}
+
+/* O feixe fica dentro do rótulo do botão: usa o raio do botão, não o do rótulo */
+.cs-btn .cs-beam { border-radius: var(--radius-full); inset: -1px; }

@@ -5,3 +5,4 @@ export * from './forms.jsx';
 export * from './data.jsx';
 export * from './layout.jsx';
 export * from './Brand.jsx';
+export * from './motion.jsx';

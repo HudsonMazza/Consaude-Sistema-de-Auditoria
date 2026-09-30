@@ -98,7 +98,7 @@ export function AiProgressModal({ open = true, steps = [], progress, onBackgroun
         {steps.map((s, i) => (
           <li key={i} className={cx('cs-step', `cs-step--${s.state}`)} aria-current={s.state === 'active' ? 'step' : undefined}>
             <span className="cs-step__mark">{s.state === 'done' ? <Icon name="check" strokeWidth={2.4} /> : s.state === 'active' ? <Spinner /> : null}</span>
-            <span>{s.label}</span>
+            <span className={s.state === 'active' ? 'cs-shimmer cs-shimmer--ia' : undefined}>{s.label}</span>
             {s.end && <span className="cs-step__end">{s.end}</span>}
           </li>
         ))}
