@@ -157,15 +157,6 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
 }
 
 // ─── NOVA AUDITORIA (antigo UploadScreen) ─────────────────────────────────────
-function columnsOf(cols) {
-  if (!cols) return undefined;
-  return [
-    cols.medicoCol ? { label: `Médico: ${cols.medicoCol}`, ok: true } : { label: 'Médico não detectado', ok: false },
-    ...(cols.pacienteCol ? [{ label: `Paciente: ${cols.pacienteCol}`, ok: true }] : []),
-    cols.valorCol ? { label: `Valor: ${cols.valorCol}`, ok: true } : { label: 'Valor não detectado', ok: false },
-  ];
-}
-
 function FileErrors({ errors }) {
   if (!errors || !errors.length) return null;
   return (
@@ -198,9 +189,9 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         {uploadError?.geral && <Callout tone="danger" title="Não foi possível continuar">{uploadError.geral}</Callout>}
         <UploadProgress done={selectedCount} total={2} />
         <div style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: compact ? 12 : 20, alignItems: 'start' }}>
-          {cards.map(({ num, title, subtitle, file, setFile, cols, rows, err }) => (
+          {cards.map(({ num, title, subtitle, file, setFile, rows, err }) => (
             <Dropzone key={num} step={num} title={title} subtitle={subtitle}
-              file={file ? { name: file.name, size: file.size, rows, columns: columnsOf(cols) } : null}
+              file={file ? { name: file.name, size: file.size, rows } : null}
               onFile={(f) => handleFileSelect(f, setFile)}
               onReplace={(f) => handleFileSelect(f, setFile)}
               onRemove={() => setFile(null)}>
