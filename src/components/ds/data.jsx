@@ -214,7 +214,7 @@ export function BarChart({ data = [], series = [], height = 240, view = 'chart',
                   return <path key={j} className={`cs-chart__bar${(series[j] && series[j].color || 'chart-1').replace('chart-', '')}`} d={isTop ? topRoundedRect(cx0 - barW / 2, top, barW, hgt, 4) : `M${cx0 - barW / 2},${top}h${barW}v${hgt}h${-barW}Z`} />;
                 })}
                 <text className="cs-chart__axis" x={cx0} y={H - 6} textAnchor="middle">{d.label}{d.partial ? '*' : ''}</text>
-                <rect className="cs-chart__hit" x={cx0 - band / 2} y={padT} width={band} height={innerH + padB} tabIndex={0}
+                <rect className="cs-chart__hit" x={cx0 - band / 2} y={padT} width={band} height={innerH + padB} tabIndex={0} role="img"
                   aria-label={`${d.label}${d.partial ? ' (' + partialLabel.toLowerCase() + ')' : ''}: ${series.map((s, j) => s.name + ' ' + formatValue(d.values[j])).join(', ')}; ${totalLabel.toLowerCase()} ${formatValue(totals[i])}`}
                   onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)} onFocus={() => setActive(i)} onBlur={() => setActive(null)} />
               </g>

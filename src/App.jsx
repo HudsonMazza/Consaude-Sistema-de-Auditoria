@@ -12,28 +12,32 @@
 // Preferências (Configurações, src/lib/preferences.js): a tolerância substitui o R$ 0,01 fixo da opção
 // "ignorar diferenças" em novas auditorias (fica registrada em `res.tolerancia`); as opções de comparação
 // da Nova auditoria partem dos padrões salvos; as exportações recebem o que incluir e o responsável.
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { firebaseReady, auth } from "./firebase";
 import { observarSessao, logout } from "./auth";
 import { observarHistorico, salvarAuditoria, salvarRelatorioIA, salvarStatuses, excluirAuditoria, migrarHistoricoLocal } from "./audits";
 import {
   parseExcel, extractReferencia, detectColumns, originalNames, rowsWithoutName, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
+  sheetHeaders, mergeColumns,
 } from "./lib/engine.js";
-import { exportExcel, exportPDF } from "./lib/exporters.js";
-import { generateAIReport } from "./lib/aiReport.js";
+// Exportações e relatório IA carregam sob demanda (as funções já eram assíncronas).
+const exportExcel = (...a) => import("./lib/exporters.js").then((m) => m.exportExcel(...a));
+const exportPDF   = (...a) => import("./lib/exporters.js").then((m) => m.exportPDF(...a));
+const generateAIReport = (...a) => import("./lib/aiReport.js").then((m) => m.generateAIReport(...a));
 import { openReport } from "./lib/reportViewer.js";
 import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
-import { AiProgressModal, Modal, Button } from "./components/ds/index.js";
+import { AiProgressModal, Modal, Button, Card, Skeleton } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
 import { ToastProvider, useToast } from "./components/Toaster.jsx";
 import { LoginScreen, ForcePasswordChangeScreen, FirebaseSetupScreen, AuthLoading, SessionErrorScreen } from "./pages/auth.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import AuditsPage from "./pages/AuditsPage.jsx";
 import ProcessingPage from "./pages/ProcessingPage.jsx";
-import ReportPage from "./pages/ReportPage.jsx";
-import UsersPage from "./pages/UsersPage.jsx";
-import ProfilePage from "./pages/ProfilePage.jsx";
-import SettingsPage from "./pages/SettingsPage.jsx";
+// Telas fora do caminho inicial (Dashboard/Auditorias) carregam sob demanda.
+const ReportPage   = lazy(() => import("./pages/ReportPage.jsx"));
+const UsersPage    = lazy(() => import("./pages/UsersPage.jsx"));
+const ProfilePage  = lazy(() => import("./pages/ProfilePage.jsx"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage.jsx"));
 import { capitalize, copyText } from "./lib/display.js";
 
 const AI_STEPS = [
@@ -74,11 +78,20 @@ export default function App() {
   const [uploadError,   setUploadError]   = useState(null);
   const [periodoAuditoria, setPeriodoAuditoria] = useState('');
   const [statuses,      setStatuses]      = useState({});
-  // Status de revisão salvos na auditoria: "blocked" = regras do Firestore ainda não permitem (fica só nesta sessão)
+  // Status de revisão salvos na auditoria: idle | pending (mudança aguardando) | saving | saved | error
+  // | blocked (regras do Firestore ainda não permitem: vale só nesta sessão).
   const [statusSave,    setStatusSave]    = useState("idle");
+  const [statusSavedAt, setStatusSavedAt] = useState(null);
+  const [statusChangedAt, setStatusChangedAt] = useState(null);
   const statusesDirty = useRef(false);
+  const statusSaveSeq = useRef(0);
+  const pendingStatuses = useRef(null); // { id, statuses } agendado e ainda não enviado
   const [cols1,         setCols1]         = useState(null);
   const [cols2,         setCols2]         = useState(null);
+  // Cabeçalhos de cada planilha e colunas escolhidas à mão ("Ajustar colunas") quando a detecção erra.
+  const [heads1,        setHeads1]        = useState([]);
+  const [heads2,        setHeads2]        = useState([]);
+  const [colMap,        setColMap]        = useState({ prod: null, rep: null });
   const [rows1,         setRows1]         = useState(null);
   const [rows2,         setRows2]         = useState(null);
   const [aiLoading,     setAiLoading]     = useState(false);
@@ -117,19 +130,48 @@ export default function App() {
   currentUserRef.current = currentUser;
   const handleLogin = (user) => setCurrentUser(user);
 
+  // Salva os status de revisão. Só o resultado do envio mais recente atualiza a tela.
+  const saveStatusesNow = useCallback((id, st) => {
+    const seq = ++statusSaveSeq.current;
+    pendingStatuses.current = null;
+    setStatusSave("saving");
+    return salvarStatuses(id, st)
+      .then(() => { if (seq === statusSaveSeq.current) { setStatusSave("saved"); setStatusSavedAt(new Date()); } })
+      .catch((e) => { if (seq === statusSaveSeq.current) setStatusSave(e?.code === "permission-denied" ? "blocked" : "error"); });
+  }, []);
+  // Envia na hora o que ainda estava agendado (ao abrir outra auditoria ou sair), para não perder a última mudança.
+  const flushStatuses = () => {
+    const p = pendingStatuses.current;
+    pendingStatuses.current = null;
+    if (p) salvarStatuses(p.id, p.statuses).catch(() => {});
+  };
+  // Nova auditoria aberta: o estado de salvamento recomeça (o bloqueio pelas regras vale para a sessão toda).
+  const resetStatusSave = () => {
+    statusSaveSeq.current += 1;
+    setStatusSave((s) => (s === "blocked" ? s : "idle"));
+    setStatusSavedAt(null);
+    setStatusChangedAt(null);
+  };
+
   // Salva os status de revisão na auditoria aberta, 800 ms depois da última mudança
   useEffect(() => {
     const id = resultados?._histId;
     if (!id || !statusesDirty.current || statusSave === "blocked") return undefined;
-    const t = setTimeout(() => {
-      salvarStatuses(id, statuses)
-        .then(() => setStatusSave("saved"))
-        .catch((e) => setStatusSave(e?.code === "permission-denied" ? "blocked" : "idle"));
-    }, 800);
+    pendingStatuses.current = { id, statuses };
+    const t = setTimeout(() => saveStatusesNow(id, statuses), 800);
     return () => clearTimeout(t);
   }, [statuses, resultados?._histId]);
 
+  const changeStatuses = (v) => {
+    statusesDirty.current = true;
+    setStatuses(v);
+    setStatusChangedAt(new Date());
+    if (resultados?._histId) setStatusSave((s) => (s === "blocked" ? s : "pending"));
+  };
+  const retryStatuses = () => { if (resultados?._histId) saveStatusesNow(resultados._histId, statuses); };
+
   const handleLogout = async () => {
+    flushStatuses();
     try { await logout(); } catch { /* segue com a limpeza local */ }
     setCurrentUser(null);
     setActivePage("dashboard");
@@ -177,8 +219,9 @@ export default function App() {
 
   // Prévia ao selecionar arquivo: linhas lidas e período detectado. Resultado de uma leitura antiga
   // (arquivo trocado ou removido no meio) é ignorado.
-  const usePreview = (key, file, setCols, setRows) => useEffect(() => {
-    setCols(null); setRows(null);
+  const usePreview = (key, file, setCols, setRows, setHeads) => useEffect(() => {
+    setCols(null); setRows(null); setHeads([]);
+    setColMap((m) => (m[key] ? { ...m, [key]: null } : m));
     setRefDetectada((r) => ({ ...r, [key]: null }));
     // Trocar ou remover o arquivo apaga o aviso de validação só deste card
     setUploadError((prev) => (prev && prev[key] ? { ...prev, [key]: undefined } : prev));
@@ -187,7 +230,7 @@ export default function App() {
     readRows(key, file)
       .then((rows) => {
         if (!alive) return;
-        setCols(detectColumns(rows)); setRows(rows.length);
+        setCols(detectColumns(rows)); setRows(rows.length); setHeads(sheetHeaders(rows));
         setRefDetectada((r) => ({ ...r, [key]: extractReferencia(rows) }));
       })
       .catch(() => {
@@ -197,8 +240,14 @@ export default function App() {
       });
     return () => { alive = false; };
   }, [file]);
-  usePreview("prod", file1, setCols1, setRows1);
-  usePreview("rep", file2, setCols2, setRows2);
+  usePreview("prod", file1, setCols1, setRows1, setHeads1);
+  usePreview("rep", file2, setCols2, setRows2, setHeads2);
+
+  // "Ajustar colunas": a escolha manual vale para o arquivo atual e limpa o aviso de validação dele.
+  const chooseColumn = (key, patch) => {
+    setColMap((m) => ({ ...m, [key]: { ...(m[key] || {}), ...patch } }));
+    setUploadError((prev) => (prev && prev[key] ? { ...prev, [key]: undefined } : prev));
+  };
 
   const step = (i, p) => {
     setSteps((s) => { const n = [...s]; n[i] = true; return n; });
@@ -211,8 +260,10 @@ export default function App() {
     setProgress(0);
     setSteps([false, false, false, false, false, false]);
     setUploadError(null);
+    flushStatuses();
     statusesDirty.current = false;
     setStatuses({});
+    resetStatusSave();
 
     try {
       // Etapa 1: Leitura dos arquivos (reaproveitando cache do preview quando disponível)
@@ -220,8 +271,9 @@ export default function App() {
       const [prodRows, repRows] = await Promise.all([readRows("prod", file1), readRows("rep", file2)]);
 
       // Etapa 2: Identificação das colunas
-      const pCols = detectColumns(prodRows);
-      const rCols = detectColumns(repRows);
+      // Colunas detectadas, com as escolhidas em "Ajustar colunas" por cima
+      const pCols = mergeColumns(detectColumns(prodRows), colMap.prod);
+      const rCols = mergeColumns(detectColumns(repRows), colMap.rep);
       const prodErrors = validateFile(prodRows, pCols);
       const repErrors  = validateFile(repRows, rCols);
       step(1, 32);
@@ -398,13 +450,17 @@ export default function App() {
     setFile2(null);
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
+    flushStatuses();
     statusesDirty.current = false;
     setStatuses({});
+    resetStatusSave();
     setSelectedMedico(null);
   };
 
   // Os status de revisão são desta auditoria: abrir outra começa do zero (antes vazavam entre meses).
   const openEntry = (entry) => {
+    flushStatuses();
+    resetStatusSave();
     statusesDirty.current = false;
     setStatuses(entry.statuses && typeof entry.statuses === "object" ? entry.statuses : {});
     setSelectedMedico(null);
@@ -464,31 +520,37 @@ export default function App() {
         ) : page === "audits-new" || page === "audits" ? (
           <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
-            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep }} />
-        ) : page === "results" ? (
-          <ReportPage
-            selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}
-            resultados={resultados}
-            statuses={statuses} setStatuses={(v) => { statusesDirty.current = true; setStatuses(v); }}
-            statusesPersist={Boolean(resultados?._histId) && statusSave !== "blocked"}
-            exportFormat={getPreferences().formato}
-            onExportExcel={() => resultados && exportExcel(resultados, getExportOptions(currentUser, statuses))}
-            onExportPDF={()   => resultados && exportPDF(resultados, getExportOptions(currentUser, statuses))}
-            onGenerateAI={handleGenerateAIReport}
-            aiLoading={aiLoading}
-            onShare={() => {
-              if (!resultados) return;
-              const txt = `Auditoria ${resultados.referencia}\n${resultados.medicosComDivergencia} médicos com divergência — Valor total: ${resultados.valorTotal}`;
-              return copyText(txt);
-            }}
-            onNewAudit={startNewAudit}
-          />
-        ) : page === "users" ? (
-          <UsersPage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
-        ) : page === "profile" ? (
-          <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
+            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep,
+              heads1, heads2, colMap, chooseColumn }} />
         ) : (
-          <SettingsPage currentUser={currentUser} onDirtyChange={(d) => { settingsDirty.current = d; }} />
+          <Suspense fallback={<PageLoading />}>
+          {page === "results" ? (
+            <ReportPage
+              selectedMedico={selectedMedico} setSelectedMedico={setSelectedMedico}
+              resultados={resultados}
+              statuses={statuses} setStatuses={changeStatuses}
+              saveState={{ status: statusSave, savedAt: statusSavedAt, persisted: Boolean(resultados?._histId), onRetry: retryStatuses }}
+              reviewChangedAt={statusChangedAt}
+              exportFormat={getPreferences().formato}
+              onExportExcel={() => resultados && exportExcel(resultados, getExportOptions(currentUser, statuses))}
+              onExportPDF={()   => resultados && exportPDF(resultados, getExportOptions(currentUser, statuses))}
+              onGenerateAI={handleGenerateAIReport}
+              aiLoading={aiLoading}
+              onShare={() => {
+                if (!resultados) return;
+                const txt = `Auditoria ${resultados.referencia}\n${resultados.medicosComDivergencia} médicos com divergência — Valor total: ${resultados.valorTotal}`;
+                return copyText(txt);
+              }}
+              onNewAudit={startNewAudit}
+            />
+          ) : page === "users" ? (
+            <UsersPage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
+          ) : page === "profile" ? (
+            <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
+          ) : (
+            <SettingsPage currentUser={currentUser} onDirtyChange={(d) => { settingsDirty.current = d; }} />
+          )}
+          </Suspense>
         )}
         {aiLoading && !aiHidden && (
           <AiProgressModal steps={AI_STEPS} onBackground={() => setAiHidden(true)}
@@ -499,6 +561,17 @@ export default function App() {
           footer={<><Button variant="secondary" onClick={() => setPendingLeave(null)} data-autofocus>Continuar editando</Button><Button variant="danger" onClick={confirmLeave}>Descartar alterações</Button></>} />
       </AppLayout>
     </ToastProvider>
+  );
+}
+
+/** Enquanto a tela carregada sob demanda chega: esqueleto no lugar do conteúdo (a casca continua na tela). */
+function PageLoading() {
+  return (
+    <div className="cs-stack" aria-busy="true">
+      <span className="cs-sr" role="status">Carregando…</span>
+      <Skeleton width="28%" height={28} />
+      <Card><div className="cs-stack"><Skeleton width="40%" /><Skeleton width="70%" height={24} /><Skeleton width="55%" /></div></Card>
+    </div>
   );
 }
 

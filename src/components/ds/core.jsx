@@ -165,25 +165,29 @@ export function ProfileBadge({ profile, children, size }) {
 
 /**
  * DirectionTag — direction of a deviation. `direction`: 'rep' (Repasse maior = pago a mais) | 'prod' (Produção maior = pago a menos).
- * Encodes by glyph (↗ / ↙) + word, never by color alone. `short` shows "Rep"/"Prod".
+ * Encodes by glyph (↗ / ↙) + word, never by color alone. `short` shows "Rep"/"Prod" (só em larguras compactas);
+ * leitores de tela sempre ouvem a direção por extenso e o que ela significa.
  */
 export function DirectionTag({ direction, short = false, plain = false, children }) {
   const rep = direction === 'rep';
-  const label = children || (short ? (rep ? 'Rep' : 'Prod') : rep ? 'Repasse maior' : 'Produção maior');
+  const full = rep ? 'Repasse maior' : 'Produção maior';
+  const meaning = rep ? 'pago a mais' : 'pago a menos';
   return (
     <span className={cx('cs-dir', rep ? 'cs-dir--rep' : 'cs-dir--prod', plain && 'cs-dir--plain')} title={rep ? 'Repasse maior que a produção (pago a mais)' : 'Produção maior que o repasse (pago a menos)'}>
       <span className="cs-dir__glyph" aria-hidden="true"><Icon name={rep ? 'arrow-up-right' : 'arrow-down-left'} /></span>
-      {label}
+      {children || (short ? <><span aria-hidden="true">{rep ? 'Rep' : 'Prod'}</span><span className="cs-sr">{full}</span></> : full)}
+      <span className="cs-sr">{`, ${meaning}`}</span>
     </span>
   );
 }
-/** Difference cell: signed value on top, direction tag under it (right-aligned). */
-export function DiffValue({ value, short = true }) {
+/** Difference cell: signed value on top, direction tag under it (right-aligned). Palavra inteira no desktop; "Rep"/"Prod" no compacto. */
+export function DiffValue({ value, short }) {
+  const { compact } = useViewport();
   const dir = value >= 0 ? 'rep' : 'prod';
   return (
     <span className="cs-diffcell">
       <span className="cs-diffcell__value">{formatBRL(value, { signed: true })}</span>
-      <DirectionTag direction={dir} short={short} plain />
+      <DirectionTag direction={dir} short={short ?? compact} plain />
     </span>
   );
 }

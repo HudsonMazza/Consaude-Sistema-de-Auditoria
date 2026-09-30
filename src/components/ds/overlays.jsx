@@ -86,10 +86,10 @@ export function AiProgressModal({ open = true, steps = [], progress, onBackgroun
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <span className="cs-orb" aria-hidden="true" />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={cx('cs-progress', progress == null && 'cs-progress--indeterminate')}>
+          <div className={cx('cs-progress', 'cs-progress--ia', progress == null && 'cs-progress--indeterminate')}>
             <div className="cs-progress__head"><span>Progresso</span><span className="cs-progress__value">{progress != null ? Math.round(progress) + '%' : 'Em andamento'}</span></div>
             <div className="cs-progress__track" role="progressbar" aria-label="Progresso da geração" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress != null ? Math.round(progress) : undefined} aria-valuetext={progress == null ? 'Em andamento' : undefined}>
-              <span className="cs-progress__fill" style={{ width: (progress || 0) + '%', background: 'var(--ia)' }} />
+              <span className="cs-progress__fill" style={{ width: (progress || 0) + '%' }} />
             </div>
           </div>
         </div>
@@ -111,18 +111,21 @@ export function AiProgressModal({ open = true, steps = [], progress, onBackgroun
 /**
  * Drawer — side panel on desktop (520px), full-screen sheet on mobile.
  * Props: open, onClose, eyebrow, title, subtitle, headerExtra, footer, children.
+ * `scrollKey`: quando muda (ex.: próximo médico), o corpo volta ao topo sem remontar o painel (o foco continua onde está).
  */
-export function Drawer({ open = true, onClose, eyebrow, title, subtitle, headerExtra, footer, children, label, autoFocus = true }) {
+export function Drawer({ open = true, onClose, eyebrow, title, subtitle, headerExtra, footer, children, autoFocus = true, scrollKey }) {
   const { compact } = useViewport();
   const ref = useRef(null);
+  const bodyRef = useRef(null);
   const id = useId();
   useDialogFocus(open, onClose, ref, autoFocus);
+  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [scrollKey]);
   if (!open) return null;
   return (
     <Portal>
       <div className="cs-overlay" data-compact={compact || undefined}>
         <div className="cs-scrim" onClick={onClose} />
-        <aside ref={ref} className="cs-drawer" role="dialog" aria-modal="true" aria-labelledby={id} aria-label={label}>
+        <div ref={ref} className="cs-drawer" role="dialog" aria-modal="true" aria-labelledby={id}>
           <header className="cs-drawer__head">
             {compact && <IconButton icon="arrow-left" label="Voltar" onClick={onClose} />}
             <div className="cs-drawer__titles">
@@ -133,9 +136,9 @@ export function Drawer({ open = true, onClose, eyebrow, title, subtitle, headerE
             {headerExtra}
             {!compact && <IconButton icon="x" label="Fechar painel" onClick={onClose} />}
           </header>
-          <div className="cs-drawer__body">{children}</div>
-          {footer && <footer className="cs-drawer__foot">{footer}</footer>}
-        </aside>
+          <div className="cs-drawer__body" ref={bodyRef}>{children}</div>
+          {footer && <div className="cs-drawer__foot">{footer}</div>}
+        </div>
       </div>
     </Portal>
   );
@@ -195,11 +198,13 @@ export function ActionMenu({ items = [], label = 'Mais ações', title, trigger,
     if (!open || compact) return;
     const onDown = (e) => { if (anchor.current && !anchor.current.contains(e.target) && menu.current && !menu.current.contains(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); const b = anchor.current && anchor.current.querySelector('button'); b && b.focus(); } };
-    const onScroll = () => setOpen(false);
+    // O menu é fixo na tela: se a página (ou a tabela) rolar, ele se soltaria do gatilho. Fecha em vez de flutuar.
+    const onScroll = (e) => { if (menu.current && e.target instanceof Node && menu.current.contains(e.target)) return; setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', onScroll);
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onScroll); };
+    document.addEventListener('scroll', onScroll, true);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onScroll); document.removeEventListener('scroll', onScroll, true); };
   }, [open, compact]);
   // Foca o primeiro item só depois de posicionado (antes disso o menu está com visibility:hidden e não recebe foco).
   const placed = pos != null;
@@ -232,7 +237,7 @@ export function ActionMenu({ items = [], label = 'Mais ações', title, trigger,
           <div ref={menu} id={id} role="menu" aria-label={label} className="cs-menu" onKeyDown={onMenuKey}
             style={{ position: 'fixed', top: pos ? pos.top : -9999, left: pos && pos.left != null ? pos.left : 'auto', right: pos && pos.right != null ? pos.right : 'auto', visibility: pos ? 'visible' : 'hidden', fontFamily: 'var(--font-sans)' }}>
             {header && <div className="cs-menu__head">{header}</div>}
-            {items.map((it, i) => it.separator ? <hr key={i} className="cs-menu__sep" /> : it.heading ? <div key={i} className="cs-menu__label">{it.heading}</div> : (
+            {items.map((it, i) => it.separator ? <hr key={i} className="cs-menu__sep" /> : it.heading ? <div key={i} className="cs-menu__label" aria-hidden="true">{it.heading}</div> : (
               <button key={i} role="menuitem" type="button" disabled={it.disabled} className={cx('cs-menu__item', it.variant && `cs-menu__item--${it.variant}`)} onClick={() => run(it)}>
                 {it.icon && <Icon name={it.icon} />}{it.label}{it.hint && <span className="cs-menu__item-end">{it.hint}</span>}
               </button>
@@ -246,7 +251,7 @@ export function ActionMenu({ items = [], label = 'Mais ações', title, trigger,
           <div className="cs-sheet__list" role="menu" aria-label={label}>
             {items.filter((it) => !it.separator && !it.heading).map((it, i) => (
               <button key={i} role="menuitem" type="button" disabled={it.disabled} className={cx('cs-sheet__item', it.variant && `cs-sheet__item--${it.variant}`)} onClick={() => run(it)}>
-                {it.icon && <Icon name={it.icon} />}{it.label}
+                {it.icon && <Icon name={it.icon} />}{it.label}{it.hint && <span className="cs-menu__item-end">{it.hint}</span>}
               </button>
             ))}
           </div>
@@ -274,7 +279,10 @@ export function Toast({ tone = 'info', title, children, action, onClose }) {
     </div>
   );
 }
-/** ToastStack — positions toasts (bottom-right; above the bottom nav on mobile). `inline` renders in flow (previews). */
+/**
+ * ToastStack — positions toasts (bottom-right; above the bottom nav on mobile). `inline` renders in flow (previews).
+ * Fica sempre montado (mesmo vazio): a região aria-live precisa existir antes do primeiro toast para ele ser anunciado.
+ */
 export function ToastStack({ children, inline = false }) {
   const { compact } = useViewport();
   const stack = <div className={cx('cs-toasts', inline && 'cs-toasts--inline')} data-compact={(!inline && compact) || undefined} aria-live="polite">{children}</div>;

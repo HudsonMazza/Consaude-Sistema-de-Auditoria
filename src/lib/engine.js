@@ -1,5 +1,14 @@
 // Movido de auditoria-medica.jsx sem alteração de comportamento.
-import * as XLSX from "xlsx";
+// SheetJS (xlsx) é carregado sob demanda dentro de parseExcel: as funções puras deste módulo (parseValue,
+// detectColumns, validateFile…) continuam síncronas e não puxam a biblioteca para o pacote inicial.
+import { titleCase, joinNames } from "./names.js";
+
+let xlsxModule = null;
+/** Carrega o SheetJS uma vez só (import dinâmico → chunk separado no build). */
+function loadXLSX() {
+  if (!xlsxModule) xlsxModule = import("xlsx").then((m) => m.default ?? m).catch((err) => { xlsxModule = null; throw err; });
+  return xlsxModule;
+}
 
 // ─── ENGINE: PARSING ──────────────────────────────────────────────────────────
 
@@ -90,7 +99,7 @@ export function normalizeCol(s) {
  * Escolhe a aba com os dados: a primeira que tem colunas de médico e de valor reconhecíveis
  * (ignora capa, resumo e abas vazias). Sem nenhuma assim, a primeira aba com linhas; senão, a primeira.
  */
-function pickSheetRows(wb) {
+function pickSheetRows(XLSX, wb) {
   let firstWithRows = null;
   for (const name of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "", raw: true });
@@ -113,8 +122,9 @@ function decodeCsv(bytes) {
   }
 }
 
-export function parseExcel(file) {
+export async function parseExcel(file) {
   const isCsv = /\.csv$/i.test(file?.name || "");
+  const XLSX = await loadXLSX();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -125,7 +135,7 @@ export function parseExcel(file) {
         const wb = isCsv
           ? XLSX.read(decodeCsv(bytes), { type: "string", raw: true })
           : XLSX.read(bytes, { type: "array" });
-        resolve(pickSheetRows(wb));
+        resolve(pickSheetRows(XLSX, wb));
       } catch (err) { reject(err); }
     };
     reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
@@ -232,20 +242,39 @@ export function detectColumns(rows) {
   return { medicoCol, pacienteCol, valorCol };
 }
 
+/** Nomes de colunas da planilha (cabeçalho da primeira linha), sem as colunas sem título que o SheetJS cria. */
+export function sheetHeaders(rows) {
+  return rows && rows.length ? Object.keys(rows[0]).filter((c) => !/^__EMPTY/.test(c)) : [];
+}
+
+/** Colunas detectadas com as escolhas manuais do usuário por cima (só as preenchidas). */
+export function mergeColumns(detected, override) {
+  const out = { ...detected };
+  if (override) {
+    for (const k of ["medicoCol", "valorCol", "pacienteCol"]) {
+      if (override[k] !== undefined) out[k] = override[k] || null;
+    }
+  }
+  return out;
+}
+
+const fmtN = (n) => n.toLocaleString("pt-BR");
+
+/** Problemas que impedem usar o arquivo. Cada mensagem diz o que houve e o que fazer. */
 export function validateFile(rows, cols) {
-  if (!rows.length) return ["Arquivo vazio ou sem dados legíveis."];
+  if (!rows.length) return ["A planilha está vazia ou não tem dados legíveis. Envie outro arquivo."];
   const errs = [];
-  if (!cols.medicoCol)   errs.push("Coluna de médico/prestador não identificada.");
-  if (!cols.valorCol)    errs.push("Coluna de valor/total não identificada.");
+  if (!cols.medicoCol)   errs.push("Não encontramos a coluna com o nome do médico. Indique qual é em “Ajustar colunas”.");
+  if (!cols.valorCol)    errs.push("Não encontramos a coluna de valor. Indique qual é em “Ajustar colunas”.");
   if (errs.length) return errs;
 
   const emptyMed = rows.filter((r) => !normalizeName(r[cols.medicoCol])).length;
   if (emptyMed > rows.length * 0.4)
-    errs.push(`${emptyMed} de ${rows.length} linhas sem nome de médico.`);
+    errs.push(`${fmtN(emptyMed)} de ${fmtN(rows.length)} linhas estão sem nome de médico. Confira a coluna do médico em “Ajustar colunas”.`);
 
   const zeroVal = rows.filter((r) => parseValue(r[cols.valorCol]) === 0).length;
   if (zeroVal > rows.length * 0.6)
-    errs.push(`${zeroVal} de ${rows.length} linhas com valor zero — verifique a coluna de valor.`);
+    errs.push(`${fmtN(zeroVal)} de ${fmtN(rows.length)} linhas têm valor zero. Confira a coluna de valor em “Ajustar colunas”.`);
 
   return errs;
 }
@@ -307,49 +336,52 @@ export function comparePatients(prodRows, repRows, pCols, rCols) {
 
 // ─── ENGINE: INSIGHTS ─────────────────────────────────────────────────────────
 
+const DIRECAO = { prod_maior: "Produção maior", rep_maior: "Repasse maior" };
+const medicos = (n) => `${fmtN(n)} ${n === 1 ? "médico" : "médicos"}`;
+
+/**
+ * Pontos de atenção do relatório: curtos e factuais, com o vocabulário da interface
+ * (Repasse maior / Produção maior) e nomes em caixa de título.
+ */
 export function generateInsights(divs, totalMedicos, valorTotal) {
   if (!divs.length)
-    return ["Nenhuma divergência encontrada. Os relatórios de produção e repasse estão em plena conformidade."];
+    return ["Nenhuma divergência entre Produção e Repasse."];
 
   const ins = [];
-  const pct = ((divs.length / totalMedicos) * 100).toFixed(0);
+  const pct = totalMedicos ? Math.round((divs.length / totalMedicos) * 100) : 0;
   ins.push(
-    `${divs.length} de ${totalMedicos} médico(s) analisados (${pct}%) apresentam divergências de faturamento.`
+    `${fmtN(divs.length)} de ${medicos(totalMedicos)} ${totalMedicos === 1 ? "analisado" : "analisados"} (${pct}%) ${divs.length === 1 ? "tem" : "têm"} divergência.`
   );
 
   const sorted = [...divs].sort((a, b) => b.diferencaRaw - a.diferencaRaw);
-  const prodMaior = divs.filter((d) => d.sentido === "prod_maior");
-  const repMaior  = divs.filter((d) => d.sentido === "rep_maior");
-  if (prodMaior.length)
-    ins.push(`${prodMaior.length} médico(s) com Produção > Repasse (possível subpagamento): ${prodMaior.map(d => d.medico).join(", ")}.`);
+  const nomes = (list) => joinNames(list.map((d) => titleCase(d.medico)), 3);
+  const repMaior  = sorted.filter((d) => d.sentido === "rep_maior");
+  const prodMaior = sorted.filter((d) => d.sentido === "prod_maior");
   if (repMaior.length)
-    ins.push(`${repMaior.length} médico(s) com Repasse > Produção (valor repasse excede o produzido): ${repMaior.slice(0,3).map(d => d.medico).join(", ")}${repMaior.length > 3 ? " e outros" : ""}.`);
-  ins.push(`Maior divergência individual: ${sorted[0].medico} — ${brl(sorted[0].diferencaRaw)} de diferença (${sorted[0].sentido === "prod_maior" ? "Prod maior" : "Rep maior"}).`);
+    ins.push(`Repasse maior (pago a mais) em ${medicos(repMaior.length)}: ${nomes(repMaior)}.`);
+  if (prodMaior.length)
+    ins.push(`Produção maior (pago a menos) em ${medicos(prodMaior.length)}: ${nomes(prodMaior)}.`);
+  ins.push(`Maior diferença: ${titleCase(sorted[0].medico)}, ${brl(sorted[0].diferencaRaw)} (${DIRECAO[sorted[0].sentido] || "sem direção"}).`);
 
-  const tipos = divs.flatMap((d) => d.detalhes.map((p) => p.tipo));
+  const tipos = divs.flatMap((d) => (d.detalhes || []).map((p) => p.tipo));
   if (tipos.length) {
-    const freq     = tipos.reduce((a, t) => { a[t] = (a[t] || 0) + 1; return a; }, {});
-    const entries  = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-    const [topTipo, topQtd] = entries[0];
-    ins.push(
-      `Padrão mais frequente: "${topTipo}" com ${topQtd} ocorrência(s). Recomenda-se revisão sistemática deste tipo.`
-    );
+    const freq    = tipos.reduce((a, t) => { a[t] = (a[t] || 0) + 1; return a; }, {});
+    const [topTipo, topQtd] = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+    ins.push(`Tipo mais frequente: “${topTipo}”, em ${fmtN(topQtd)} ${topQtd === 1 ? "item" : "itens"} por paciente.`);
 
     const ausentes = tipos.filter((t) => t.startsWith("Ausente")).length;
     if (ausentes)
       ins.push(
-        `${ausentes} paciente(s) aparece(m) em apenas um dos relatórios — possíveis lançamentos faltantes ou erros de cadastro.`
+        ausentes === 1
+          ? "1 paciente aparece em só um dos relatórios: confira se falta um lançamento."
+          : `${fmtN(ausentes)} pacientes aparecem em só um dos relatórios: confira se faltam lançamentos.`
       );
   }
 
-  ins.push(
-    `O valor total divergente de ${brl(valorTotal)} impacta diretamente o fechamento financeiro. Prioridade máxima para o setor de faturamento.`
-  );
+  ins.push(`Valor divergente total: ${brl(valorTotal)}.`);
 
-  if (divs.length >= 3) {
-    const top3 = sorted.slice(0, 3).map((d) => d.medico).join(", ");
-    ins.push(`Casos prioritários para revisão imediata: ${top3}.`);
-  }
+  if (divs.length >= 3)
+    ins.push(`Revise primeiro as maiores diferenças: ${joinNames(sorted.slice(0, 3).map((d) => titleCase(d.medico)))}.`);
 
   return ins;
 }

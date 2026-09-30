@@ -4,7 +4,7 @@ import { summarizeAudits } from '../dashboard';
 import {
   Button, IconButton, Card, HeroKpi, KpiGroup, KpiCard, SegmentedMeter, Legend, BarChart, DonutChart, RankingList,
   DataTable, ResultBadge, SegmentedControl, SheetSelect, PageHeader, Callout, EmptyState, ErrorState, Skeleton,
-  formatBRL, formatNumber, formatPercent, titleCase, useViewport, AnimatedNumber,
+  formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
 import { auditTime, auditValue, auditMonthKey, hasDifferences, auditItemCount, capitalize } from '../lib/display.js';
 
@@ -37,7 +37,7 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
 
   const header = (
     <PageHeader title="Dashboard"
-      subtitle={`Volume e desvios das auditorias concluídas · últimos ${months} meses`}
+      subtitle={`Volume e desvios das auditorias processadas · últimos ${months} meses`}
       extra={!compact && <>
         <SegmentedControl label="Período" value={String(months)} onChange={(v) => setMonths(Number(v))} options={PERIODS} />
         {scopeSelect}
@@ -74,7 +74,7 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
       {mobileFilters}
       <div className="cs-grid cs-grid--stretch">
         <div className="cs-span-4 cs-md-6">
-          <HeroKpi label={`Valor divergente · ${months} meses`} icon="banknote" value={<AnimatedNumber value={m.divergentValue} format={formatBRL} />}
+          <HeroKpi label={`Valor divergente · ${months} meses`} icon="banknote" value={formatBRL(m.divergentValue)}
             meta={<span>{formatNumber(m.totalDifferences)} {m.totalDifferences === 1 ? 'divergência' : 'divergências'} em {formatNumber(m.audits)} {m.audits === 1 ? 'auditoria' : 'auditorias'}</span>}
             topAction={<IconButton icon="arrow-up-right" label="Ver auditorias" onClick={onShowAudits} />}
             actions={<>
@@ -84,9 +84,9 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
         </div>
         <Card className="cs-span-5 cs-md-12" title="Resumo do período" subtitle={`${formatNumber(m.audits)} ${m.audits === 1 ? 'auditoria processada' : 'auditorias processadas'}`}>
           <KpiGroup columns={compact ? 2 : 3}>
-            <KpiCard label="Concluídas" value={<AnimatedNumber value={m.audits} format={formatNumber} />} icon="clipboard-check" hint={months === 1 ? 'Último mês' : `Últimos ${months} meses`} />
-            <KpiCard label="Com divergência" value={<AnimatedNumber value={m.auditsWithDifferences} format={formatNumber} />} icon="triangle-alert" tone="danger" hint={`${formatNumber(m.differenceRate)}% das auditorias`} />
-            <KpiCard label="Divergências" value={<AnimatedNumber value={m.totalDifferences} format={formatNumber} />} icon="list-checks" hint="Registros para revisão" />
+            <KpiCard label="Processadas" value={formatNumber(m.audits)} icon="clipboard-check" hint={months === 1 ? 'Último mês' : `Últimos ${months} meses`} />
+            <KpiCard label="Com divergência" value={formatNumber(m.auditsWithDifferences)} icon="triangle-alert" tone="danger" hint={`${formatNumber(m.differenceRate)}% das auditorias`} />
+            <KpiCard label="Divergências" value={formatNumber(m.totalDifferences)} icon="list-checks" hint="Registros para revisão" />
             {compact && <KpiCard label="Conformidade" value={m.audits ? formatPercent(conformity) : '—'} icon="scale" tone="success" hint={`${formatNumber(conformes)} de ${formatNumber(m.audits)} conformes`} />}
           </KpiGroup>
         </Card>
@@ -110,13 +110,13 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
             <Card className="cs-span-8" title="Auditorias por mês" subtitle="Conformes e com divergência, por data de processamento"
               actions={<SegmentedControl label="Visualização" value={chartView} onChange={setChartView} options={[{ id: 'chart', label: 'Gráfico', icon: 'chart-column' }, { id: 'table', label: 'Tabela', icon: 'list-checks' }]} />}>
               <Legend items={[{ label: 'Com divergência', swatch: 'chart-1' }, { label: 'Conformes', swatch: 'chart-2' }, { label: 'Mês em andamento', swatch: 'hatch' }]} />
-              <BarChart view={chartView} height={compact ? 220 : 280} caption={`Auditorias concluídas por mês, últimos ${months} meses`}
+              <BarChart view={chartView} height={compact ? 220 : 280} caption={`Auditorias processadas por mês, últimos ${months} meses`}
                 series={[{ name: 'Com divergência', color: 'chart-1' }, { name: 'Conformes', color: 'chart-2' }]} totalLabel="Total"
                 data={summary.months.map((item, i) => { const div = Math.min(withDiffByMonth[item.key] || 0, item.audits); return { label: capitalize(item.label), values: [div, item.audits - div], partial: i === summary.months.length - 1 }; })} />
             </Card>
-            <Card className="cs-span-4 cs-md-6" title="Direção dos desvios" subtitle={`${formatNumber(directionTotal)} ${directionTotal === 1 ? 'médico com divergência' : 'casos de médicos com divergência'}`}>
+            <Card className="cs-span-4 cs-md-6" title="Direção dos desvios" subtitle={`${formatNumber(directionTotal)} ${directionTotal === 1 ? 'médico com divergência' : 'médicos com divergência'}, contados por auditoria`}>
               {directionTotal ? (
-                <DonutChart centerLabel={directionTotal === 1 ? 'caso' : 'casos'} parts={[
+                <DonutChart centerLabel={directionTotal === 1 ? 'médico' : 'médicos'} parts={[
                   { label: 'Repasse maior', icon: 'arrow-up-right', value: summary.direction.rep_maior, color: 'chart-3', sub: `${formatNumber(Math.round((summary.direction.rep_maior / directionTotal) * 100))}% · pago a mais` },
                   { label: 'Produção maior', icon: 'arrow-down-left', value: summary.direction.prod_maior, color: 'chart-1', sub: `${formatNumber(Math.round((summary.direction.prod_maior / directionTotal) * 100))}% · pago a menos` },
                 ]} />

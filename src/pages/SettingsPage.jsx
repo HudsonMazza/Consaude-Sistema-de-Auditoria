@@ -64,7 +64,7 @@ export default function SettingsPage({ currentUser, onDirtyChange }) {
       setPrefs(saved);
       setThemeTouched(false);
       setDirty(false);
-      toast({ tone: 'success', title: 'Configurações salvas neste navegador.' });
+      toast({ tone: 'success', title: 'Configurações salvas.' });
     } catch {
       setError('Não foi possível salvar as configurações neste navegador.');
     }
@@ -79,7 +79,7 @@ export default function SettingsPage({ currentUser, onDirtyChange }) {
       {error && <Callout tone="danger" title="Não foi possível salvar">{error}</Callout>}
       <form id="settings-form" onSubmit={save} noValidate>
         <Card>
-          <SettingsSection title="Aparência" description="Tema da interface neste navegador.">
+          <SettingsSection title="Aparência" description="Tema da interface.">
             <SegmentedField label="Tema" value={theme}
               help="Automático acompanha o tema claro ou escuro do sistema."
               onChange={(v) => { setThemeField(v); setThemeTouched(true); setDirty(true); }}
@@ -118,11 +118,10 @@ export default function SettingsPage({ currentUser, onDirtyChange }) {
               value={prefs.exportacao.responsavel} placeholder={userName || 'Nome de quem está logado'}
               help={userName ? `Em branco, usa o nome de quem está logado (${userName}).` : 'Em branco, usa o nome de quem está logado.'}
               onChange={(event) => setNested('exportacao', 'responsavel')(event.target.value)} />
-            <div className="cs-full"><Callout tone="neutral" icon="info">Estas preferências ficam armazenadas somente neste navegador.</Callout></div>
           </SettingsSection>
         </Card>
       </form>
-      <ActionBar icon={dirty ? 'circle-alert' : 'info'} message={dirty ? 'Você tem alterações não salvas.' : 'As configurações ficam salvas somente neste navegador.'}>
+      <ActionBar icon={dirty ? 'circle-alert' : 'circle-check'} message={dirty ? 'Você tem alterações não salvas.' : 'Nenhuma alteração pendente.'}>
         <Button variant="primary" icon="check" type="submit" form="settings-form">Salvar configurações</Button>
       </ActionBar>
     </>

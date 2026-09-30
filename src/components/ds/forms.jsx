@@ -2,9 +2,9 @@
 // Plus content blocks: Accordion, Callout, EmptyState, Dropzone, UploadProgress.
 // Portado de consaude-design-system/components/src/forms.jsx. Ajustes do app: Dropzone com "Trocar"/"Remover"
 // funcionais, colunas reconhecidas como objetos e slot para mensagens; SheetSelect (chip → sheet no mobile).
-import React, { useState, useId, useRef } from 'react';
+import React, { useEffect, useState, useId, useRef } from 'react';
 import { cx, Icon, Button, IconButton, Count, formatNumber, useViewport } from './core.jsx';
-import { BorderBeam, useSlidingIndicator } from './motion.jsx';
+import { useSlidingIndicator } from './motion.jsx';
 import { BottomSheet } from './overlays.jsx';
 
 /* ───────── Tabs ───────── */
@@ -28,7 +28,7 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, fill = false, l
   }
   return (
     <div ref={listRef} className={cx('cs-tabs', fill && 'cs-tabs--fill', ink && 'cs-tabs--ink', className)} role="tablist" aria-label={label}>
-      {ink && <span className="cs-tabs__ink" aria-hidden="true" style={{ width: ink.width, transform: `translateX(${ink.left}px)` }} />}
+      {ink && <span className="cs-tabs__ink" aria-hidden="true" style={{ transform: `translateX(${ink.left}px) scaleX(${ink.width})` }} />}
       {tabs.map((t, i) => (
         <button key={t.id} ref={(el) => (refs.current[t.id] = el)} role="tab" type="button" className="cs-tab" aria-selected={cur === t.id}
           tabIndex={cur === t.id ? 0 : -1} disabled={t.disabled} onClick={() => set(t.id)} onKeyDown={(e) => onKey(e, i)}>
@@ -84,7 +84,7 @@ export function SegmentedControl({ options = [], value, defaultValue, onChange, 
       {pill && <span className="cs-seg__pill" aria-hidden="true" style={{ top: pill.top, height: pill.height, width: pill.width, transform: `translateX(${pill.left}px)` }} />}
       {options.map((o) => (
         <button key={o.id} type="button" role="radio" aria-checked={cur === o.id} className="cs-seg__opt" onClick={() => { setInner(o.id); onChange && onChange(o.id); }}>
-          {o.icon && <Icon name={o.icon} size={16} />}{o.label}
+          {o.icon && <Icon name={o.icon} size={16} />}<span className="cs-seg__label">{o.label}</span>
         </button>
       ))}
     </div>
@@ -125,14 +125,36 @@ export function TextField({ label, optional, help, error, id, className, ...inpu
   return <Field label={label} optional={optional} help={help} error={error} id={id} className={className}><Input {...inputProps} /></Field>;
 }
 
-/** SearchField — search icon, clear button, optional shortcut hint. Uncontrolled unless `value` is passed. */
+/** true quando o foco está num campo de texto (atalhos de uma tecla não devem disparar enquanto se digita). */
+export function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+/**
+ * SearchField — search icon, clear button, optional shortcut. Uncontrolled unless `value` is passed.
+ * `shortcut` (ex.: "/") mostra a tecla e foca a busca ao pressioná-la, fora de campos de texto e sem diálogo aberto.
+ */
 export function SearchField({ placeholder = 'Buscar', value, defaultValue = '', onChange, label, size, pill, shortcut, className }) {
   const [inner, setInner] = useState(defaultValue);
   const cur = value !== undefined ? value : inner;
   const set = (v) => { setInner(v); onChange && onChange(v); };
   const ref = useRef(null);
+  useEffect(() => {
+    if (!shortcut) return undefined;
+    const onKey = (e) => {
+      if (e.key !== shortcut || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      ref.current && ref.current.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [shortcut]);
   return (
     <Input ref={ref} type="search" role="searchbox" aria-label={label || placeholder} placeholder={placeholder} prefixIcon="search" size={size} pill={pill} className={className}
+      aria-keyshortcuts={shortcut || undefined}
       value={cur} onChange={(e) => set(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && set('')}
       end={cur ? <IconButton icon="x" label="Limpar busca" size="sm" className="cs-control__clear" onClick={() => { set(''); ref.current && ref.current.focus(); }} />
         : shortcut ? <span className="cs-control__affix cs-control__affix--end"><kbd className="cs-kbd">{shortcut}</kbd></span> : null} />
@@ -279,7 +301,7 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
       <header className="cs-drop__head">
         <span className="cs-drop__step" aria-hidden="true">{state === 'loaded' && !invalid && !reading ? <Icon name="check" size={16} strokeWidth={2.4} /> : step}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <h3 className="cs-drop__title">{step ? <span className="cs-sr">Passo {step}: </span> : null}{title}</h3>
+          <h2 className="cs-drop__title">{step ? <span className="cs-sr">Passo {step}: </span> : null}{title}</h2>
           {subtitle && <p className="cs-drop__sub">{subtitle}</p>}
         </div>
         {state === 'loaded' && (reading
@@ -293,7 +315,7 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
           <span className="cs-file__icon"><Icon name="file-spreadsheet" /></span>
           <div className="cs-file__body">
             <span className="cs-file__name cs-truncate" title={file.name}>{file.name}</span>
-            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{reading && <span className="cs-shimmer">Lendo planilha…</span>}{file.rows != null && (file.rows > 0 && !invalid
+            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{reading && <span className="cs-file__reading">Lendo planilha…</span>}{file.rows != null && (file.rows > 0 && !invalid
               ? <span className="ok"><Icon name="check" />{formatNumber(file.rows)} {file.rows === 1 ? 'linha lida' : 'linhas lidas'}</span>
               : <span>{file.rows === 0 ? 'Nenhuma linha de dados' : `${formatNumber(file.rows)} ${file.rows === 1 ? 'linha lida' : 'linhas lidas'}`}</span>)}</span>
           </div>
@@ -314,7 +336,6 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
         <label className="cs-drop__zone" htmlFor={inputId}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files[0]); }}>
-          {state === 'dragover' && <BorderBeam tone="accent" duration={2.2} />}
           <input id={inputId} type="file" accept={accept} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; pick(f); }} aria-describedby={inputId + 'h'} aria-invalid={state === 'error' || undefined} />
           <span className="cs-drop__glyph"><Icon name={state === 'error' ? 'file-x' : state === 'uploading' ? 'loader-circle' : 'cloud-upload'} className={state === 'uploading' ? 'cs-spin' : undefined} /></span>
           {state === 'dragover' ? <span className="cs-drop__cta">Solte para carregar</span>
