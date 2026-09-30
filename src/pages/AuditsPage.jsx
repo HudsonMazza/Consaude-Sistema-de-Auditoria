@@ -13,29 +13,34 @@ import { auditTime, auditValue, auditSortValue, capitalize } from '../lib/displa
 import { openReport } from '../lib/reportViewer.js';
 import { useToast } from '../components/Toaster.jsx';
 
-export default function AuditsPage({ view, onShowList, onNewAudit, historyCount, list, upload, exportOptions }) {
+export default function AuditsPage({ view, onShowList, onNewAudit, list, upload, exportOptions }) {
   const { compact } = useViewport();
+  // Filtro de responsável (admin) fica aqui para o contador da aba acompanhar a lista exibida.
+  const isAdmin = list.currentUser?.role === 'admin';
+  const [scope, setScope] = useState(isAdmin ? 'mine' : list.currentUser?.id);
+  const historyCount = list.status === 'ready'
+    ? list.historico.filter((row) => !isAdmin || matchesAuditScope(row, scope, list.currentUser?.id)).length
+    : undefined;
   return (
     <>
       <PageHeader title="Auditorias" subtitle="Cruze Produção × Repasse e acompanhe cada auditoria salva"
         primary={!compact && view === 'list' && <Button variant="primary" icon="plus" onClick={onNewAudit}>Nova auditoria</Button>} />
       <Tabs label="Auditorias" value={view} fill={compact}
         onChange={(id) => (id === 'new' ? onNewAudit() : onShowList())}
-        tabs={[{ id: 'list', label: 'Minhas auditorias', count: historyCount }, { id: 'new', label: 'Nova auditoria', icon: 'plus' }]} />
-      {view === 'new' ? <NewAudit {...upload} onShowAudits={onShowList} /> : <AuditList {...list} onNewAudit={onNewAudit} exportOptions={exportOptions} />}
+        tabs={[{ id: 'list', label: isAdmin ? 'Auditorias salvas' : 'Minhas auditorias', count: historyCount }, { id: 'new', label: 'Nova auditoria', icon: 'plus' }]} />
+      {view === 'new' ? <NewAudit {...upload} onShowAudits={onShowList} /> : <AuditList {...list} scope={scope} setScope={setScope} onNewAudit={onNewAudit} exportOptions={exportOptions} />}
     </>
   );
 }
 
 // ─── LISTA (antigo HistoryScreen) ─────────────────────────────────────────────
-function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, status = 'ready', onRetry, exportOptions }) {
+function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, status = 'ready', onRetry, exportOptions, scope, setScope }) {
   const toast = useToast();
   const { compact } = useViewport();
   const isAdmin = currentUser?.role === 'admin';
   const [confirmDel, setConfirmDel] = useState(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const [scope, setScope] = useState(isAdmin ? 'mine' : currentUser?.id);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
@@ -167,7 +172,9 @@ function FileErrors({ errors }) {
 
 function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits }) {
   const { compact } = useViewport();
-  const canStart = file1 && file2;
+  // Um arquivo com erro de validação precisa ser trocado antes de processar de novo.
+  const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length);
+  const canStart = file1 && file2 && !hasFileErrors;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
     { num: 1, title: 'Relatório de Produção', subtitle: 'O que cada médico produziu no período', file: file1, setFile: setFile1, cols: cols1, rows: rows1, err: uploadError?.prod },
@@ -180,7 +187,10 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
   ];
   const optionsSummary = options.filter((o) => configs[o.key]).map((o) => o.label.replace(/^\w/, (c) => c.toLowerCase()));
   const missing = !file1 && !file2 ? 'os relatórios de Produção e Repasse' : !file1 ? 'o Relatório de Produção' : 'o Relatório de Repasse';
-  const stepState = (i) => (i === 0 ? (file1 ? 'done' : 'active') : i === 1 ? (file2 ? 'done' : file1 ? 'active' : 'pending') : canStart ? 'active' : 'pending');
+  // Um arquivo com erro de validação não conta como passo concluído
+  const ok1 = file1 && !uploadError?.prod?.length;
+  const ok2 = file2 && !uploadError?.rep?.length;
+  const stepState = (i) => (i === 0 ? (ok1 ? 'done' : 'active') : i === 1 ? (ok2 ? 'done' : ok1 ? 'active' : 'pending') : canStart ? 'active' : 'pending');
 
   return (
     <div className="cs-grid">
@@ -189,7 +199,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         <UploadProgress done={selectedCount} total={2} />
         <div style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: compact ? 12 : 20, alignItems: 'start' }}>
           {cards.map(({ num, title, subtitle, file, setFile, rows, err }) => (
-            <Dropzone key={num} step={num} title={title} subtitle={subtitle}
+            <Dropzone key={num} step={num} title={title} subtitle={subtitle} invalid={Boolean(err?.length)}
               file={file ? { name: file.name, size: file.size, rows } : null}
               onFile={(f) => handleFileSelect(f, setFile)}
               onReplace={(f) => handleFileSelect(f, setFile)}
@@ -238,8 +248,10 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         <Callout tone="info" title="Formatos aceitos">.xlsx, .xls ou .csv com colunas de médico, paciente e valor. A primeira linha deve ser o cabeçalho. Limite de 50 MB por arquivo.</Callout>
       </Card>
       <div className="cs-span-12">
-        <ActionBar icon={canStart ? 'circle-check' : 'info'}
-          message={canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.' : <span>{!file1 && !file2 ? 'Faltam' : 'Falta'} {missing} para processar.</span>}>
+        <ActionBar icon={hasFileErrors ? 'circle-alert' : canStart ? 'circle-check' : 'info'}
+          message={hasFileErrors ? 'Troque o arquivo indicado acima para processar a auditoria.'
+            : canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.'
+            : <span>{!file1 && !file2 ? 'Faltam' : 'Falta'} {missing} para processar.</span>}>
           {!compact && <Button variant="ghost" onClick={onShowAudits}>Cancelar</Button>}
           <Button variant="primary" icon="refresh-cw" onClick={startAudit} disabled={!canStart}>Processar auditoria</Button>
         </ActionBar>

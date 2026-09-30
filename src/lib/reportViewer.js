@@ -18,10 +18,15 @@ export function reportViewerHTML(html, title = "Relatório IA · ConSaúde") {
 </body></html>`;
 }
 
-/** Abre o relatório numa aba nova, isolado do app. */
+/** Abre o relatório numa aba nova, isolado do app. Retorna false se o navegador bloqueou a aba. */
 export function openReport(html, { title } = {}) {
   const blob = new Blob([reportViewerHTML(html, title)], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   setTimeout(() => URL.revokeObjectURL(url), 60000);
-  window.open(url, "_blank", "noopener");
+  // Sem "noopener" para saber se a aba abriu (com ele o navegador sempre devolve null);
+  // o vínculo com esta aba é cortado logo em seguida.
+  const win = window.open(url, "_blank");
+  if (!win) return false;
+  try { win.opener = null; } catch { /* já isolada */ }
+  return true;
 }

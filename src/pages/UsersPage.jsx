@@ -146,7 +146,8 @@ export default function UsersPage({ currentUser, deps = authApi }) {
   const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
   const activeUsers = users.filter(u => !u.disabled);
   const adminUsers = users.filter(u => u.role === 'admin');
-  const attentionUsers = users.filter(u => u.disabled || u.mustChangePassword);
+  // "Requer atenção" = contas ativas esperando a troca de senha (as desativadas já aparecem como bloqueadas)
+  const attentionUsers = users.filter(u => !u.disabled && u.mustChangePassword);
   const pendingUsers = users.filter(u => !u.disabled && u.mustChangePassword);
   const disabledUsers = users.filter(u => u.disabled);
   const visibleUsers = users.filter((u) => {

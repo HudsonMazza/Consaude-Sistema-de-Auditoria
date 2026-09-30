@@ -20,7 +20,7 @@ function SegmentedField({ label, help, ...props }) {
   );
 }
 
-export default function SettingsPage({ currentUser }) {
+export default function SettingsPage({ currentUser, onDirtyChange }) {
   const toast = useToast();
   const [prefs, setPrefs] = useState(getPreferences);
   const [theme, setThemeField] = useState(getThemePreference);
@@ -30,6 +30,16 @@ export default function SettingsPage({ currentUser }) {
 
   // O tema também pode ser trocado pelo menu da conta: mantém o campo em dia se ele não foi alterado aqui.
   useEffect(() => onThemeChange(() => { if (!themeTouched) setThemeField(getThemePreference()); }), [themeTouched]);
+
+  // Avisa o App (confirmação ao trocar de tela) e o navegador (ao fechar/recarregar a aba)
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    if (!dirty) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  useEffect(() => () => onDirtyChange?.(false), []);
 
   const update = (fn) => { setPrefs((current) => fn(current)); setDirty(true); };
   const setTop = (key) => (value) => update((p) => ({ ...p, [key]: value }));

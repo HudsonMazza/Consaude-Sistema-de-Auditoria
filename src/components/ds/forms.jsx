@@ -11,7 +11,8 @@ import { BottomSheet } from './overlays.jsx';
 export function Tabs({ tabs = [], value, defaultValue, onChange, fill = false, label = 'Seções', className }) {
   const [inner, setInner] = useState(defaultValue || (tabs[0] && tabs[0].id));
   const cur = value !== undefined ? value : inner;
-  const set = (id) => { setInner(id); onChange && onChange(id); };
+  // Clicar na aba já ativa não dispara onChange (evita recarregar/limpar a tela atual)
+  const set = (id) => { if (id === cur) return; setInner(id); onChange && onChange(id); };
   const refs = useRef({});
   function onKey(e, i) {
     const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
@@ -249,7 +250,7 @@ const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ','
  * file: { name, size, rows, columns: ['Médico', …] | [{ label, ok }] }. error: message. onFile(file), onRemove(), onReplace(file).
  * children render under the zone (validation callouts). accept defaults to .xlsx,.xls,.csv.
  */
-export function Dropzone({ step, title, subtitle, state: stateProp, file, error, onFile, onRemove, onReplace, accept = '.xlsx,.xls,.csv', hint = '.xlsx, .xls ou .csv · até 50 MB', children }) {
+export function Dropzone({ step, title, subtitle, state: stateProp, file, error, invalid = false, onFile, onRemove, onReplace, accept = '.xlsx,.xls,.csv', hint = '.xlsx, .xls ou .csv · até 50 MB', children }) {
   const [drag, setDrag] = useState(false);
   const inputId = useId();
   const replaceRef = useRef(null);
@@ -259,19 +260,23 @@ export function Dropzone({ step, title, subtitle, state: stateProp, file, error,
   return (
     <section className={cx('cs-drop', `cs-drop--${state}`)} aria-label={title}>
       <header className="cs-drop__head">
-        <span className="cs-drop__step" aria-hidden="true">{state === 'loaded' ? <Icon name="check" size={16} strokeWidth={2.4} /> : step}</span>
+        <span className="cs-drop__step" aria-hidden="true">{state === 'loaded' && !invalid ? <Icon name="check" size={16} strokeWidth={2.4} /> : step}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <h3 className="cs-drop__title">{step ? <span className="cs-sr">Passo {step}: </span> : null}{title}</h3>
           {subtitle && <p className="cs-drop__sub">{subtitle}</p>}
         </div>
-        {state === 'loaded' && <span className="cs-badge cs-badge--success cs-badge--sm"><Icon name="circle-check" />Carregado</span>}
+        {state === 'loaded' && (invalid
+          ? <span className="cs-badge cs-badge--danger cs-badge--sm"><Icon name="circle-alert" />Revisar arquivo</span>
+          : <span className="cs-badge cs-badge--success cs-badge--sm"><Icon name="circle-check" />Carregado</span>)}
       </header>
       {state === 'loaded' && file ? (
         <div className="cs-file">
           <span className="cs-file__icon"><Icon name="file-spreadsheet" /></span>
           <div className="cs-file__body">
             <span className="cs-file__name cs-truncate" title={file.name}>{file.name}</span>
-            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{file.rows != null && <span className="ok"><Icon name="check" />{formatNumber(file.rows)} linhas lidas</span>}</span>
+            <span className="cs-file__meta"><span>{file.size ? fmtSize(file.size) : ''}</span>{file.rows != null && (file.rows > 0 && !invalid
+              ? <span className="ok"><Icon name="check" />{formatNumber(file.rows)} {file.rows === 1 ? 'linha lida' : 'linhas lidas'}</span>
+              : <span>{file.rows === 0 ? 'Nenhuma linha de dados' : `${formatNumber(file.rows)} ${file.rows === 1 ? 'linha lida' : 'linhas lidas'}`}</span>)}</span>
           </div>
           {onReplace && <>
             <IconButton icon="refresh-cw" label={`Trocar arquivo de ${title}`} size="sm" onClick={() => replaceRef.current && replaceRef.current.click()} />

@@ -5,7 +5,9 @@ import {
   StatusBadge, ResultBadge, DirectionTag, DiffValue, SearchField, FilterChips, EmptyState, ActionMenu, Drawer, Callout,
   Icon, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
-import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize } from '../lib/display.js';
+import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
+
+const COPY_FAIL = { tone: 'error', title: 'Não foi possível copiar', text: 'O navegador bloqueou a área de transferência. Selecione o texto e copie manualmente.' };
 import { useToast } from '../components/Toaster.jsx';
 
 const ORDER = ['pendente', 'revisado', 'corrigido'];
@@ -35,8 +37,8 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
     const matchesStatus = statusFilter === 'all' || getStatus(row.id) === statusFilter;
     return matchesQuery && matchesStatus;
   });
-  const copyInsight = (text, i) => {
-    navigator.clipboard?.writeText(text);
+  const copyInsight = async (text, i) => {
+    if (!(await copyText(text))) { toast(COPY_FAIL); return; }
     setCopiedInsight(i);
     setTimeout(() => setCopiedInsight(null), 1500);
   };
@@ -67,7 +69,10 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
   const excelDefault = exportFormat === 'XLSX';
   const onExportDefault = excelDefault ? onExportExcel : onExportPDF;
 
-  const onCopySummary = () => { onShare(); toast({ tone: 'success', title: 'Resumo copiado', text: 'Cole onde precisar.' }); };
+  const onCopySummary = async () => {
+    const ok = await Promise.resolve(onShare?.()).catch(() => false);
+    toast(ok ? { tone: 'success', title: 'Resumo copiado', text: 'Cole onde precisar.' } : COPY_FAIL);
+  };
   // Formato padrão (Configurações) vem primeiro e é a ação direta do botão Exportar.
   const excelItem = { label: 'Excel (.xlsx)', icon: 'file-spreadsheet', variant: 'export', onSelect: onExportExcel };
   const pdfItem = { label: 'PDF', icon: 'file-text', onSelect: onExportPDF };
@@ -84,7 +89,7 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
         <span className="cs-cell-main__sub">{d.detalhes?.length ? `${formatNumber(d.detalhes.length)} ${d.detalhes.length === 1 ? 'paciente' : 'pacientes'}` : 'Sem detalhamento'}</span></span>) },
     { key: 'producao', header: 'Produção', align: 'right', sortable: true, priority: 2, sortValue: (d) => brlToNumber(d.producao), render: (d) => d.producao },
     { key: 'repasse', header: 'Repasse', align: 'right', sortable: true, priority: 2, sortValue: (d) => brlToNumber(d.repasse), render: (d) => d.repasse },
-    { key: 'diff', header: 'Diferença', align: 'right', sortable: true, sortValue: (d) => Number(d.diferencaRaw) || 0, render: (d) => <DiffValue value={signedDiff(d)} /> },
+    { key: 'diff', header: 'Diferença', align: 'right', sortable: true, sortValue: (d) => signedDiff(d), render: (d) => <DiffValue value={signedDiff(d)} /> },
     { key: 'items', header: 'Itens', align: 'center', sortable: true, sortValue: (d) => d.detalhes?.length || 0, render: (d) => (d.detalhes?.length ? <Count>{d.detalhes.length}</Count> : <span className="cs-faint">—</span>) },
     { key: 'status', header: 'Status', sortable: true, sortValue: (d) => ORDER.indexOf(getStatus(d.id)), render: (d) => <StatusBadge status={getStatus(d.id)} /> },
   ];
@@ -204,7 +209,7 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
 
       {selectedMedico && (
         <DoctorDrawer medico={selectedMedico} status={getStatus(selectedMedico.id)} onCycle={() => cycleStatus(selectedMedico.id)}
-          onClose={() => setSelectedMedico(null)} onCopied={() => toast({ tone: 'success', title: 'Item copiado' })} />
+          onClose={() => setSelectedMedico(null)} onCopied={(ok) => toast(ok ? { tone: 'success', title: 'Item copiado' } : COPY_FAIL)} />
       )}
     </>
   );
@@ -242,7 +247,7 @@ function DoctorDrawer({ medico, status, onCycle, onClose, onCopied }) {
         <h3 className="cs-card__title" style={{ fontSize: 14, lineHeight: '20px' }}>Itens por paciente {detalhes.length > 0 && <Count>{detalhes.length}</Count>}</h3>
         {!detalhes.length ? (
           <EmptyState compact icon="inbox" title="Sem detalhamento por paciente">
-            {medico.detalhes?.length === 0 ? 'A comparação por paciente não estava habilitada nesta auditoria.' : 'Sem detalhamento disponível.'}
+            Esta auditoria não tem itens por paciente. Isso acontece quando a comparação por paciente está desligada ou quando as planilhas não têm coluna de paciente.
           </EmptyState>
         ) : (
           <ul className="cs-plist">
@@ -252,7 +257,7 @@ function DoctorDrawer({ medico, status, onCycle, onClose, onCopied }) {
                 <li className="cs-prow" key={index}>
                   <span className="cs-prow__name cs-truncate" title={detail.paciente}>{titleCase(detail.paciente)}<span className="cs-faint" style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 400 }}>{detail.tipo}</span></span>
                   <IconButton icon="copy" size="sm" label={`Copiar item de ${titleCase(detail.paciente)}`}
-                    onClick={() => { navigator.clipboard?.writeText(`Paciente: ${detail.paciente} | Produção: ${detail.producao} | Repasse: ${detail.repasse} | Diferença: ${detail.diferenca} | Tipo: ${detail.tipo}`); onCopied(); }} />
+                    onClick={() => copyText(`Paciente: ${detail.paciente} | Produção: ${detail.producao} | Repasse: ${detail.repasse} | Diferença: ${detail.diferenca} | Tipo: ${detail.tipo}`).then(onCopied)} />
                   <div className="cs-prow__vals">
                     <span>Produção<b>{brlToNumber(detail.producao) ? detail.producao : '—'}</b></span>
                     <span>Repasse<b>{brlToNumber(detail.repasse) ? detail.repasse : '—'}</b></span>

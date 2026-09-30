@@ -14,6 +14,9 @@ export function lerFotoRedimensionada(file, size = 256, quality = 0.85) {
         const canvas = document.createElement('canvas');
         canvas.width = canvas.height = size;
         const ctx = canvas.getContext('2d');
+        // JPEG não tem transparência: sem um fundo, as áreas transparentes (PNG) ficariam pretas
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
         const escala = Math.max(size / img.width, size / img.height);
         const w = img.width * escala, h = img.height * escala;
         ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);

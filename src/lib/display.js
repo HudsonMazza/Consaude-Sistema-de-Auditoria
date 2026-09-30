@@ -72,10 +72,26 @@ export const capitalize = (s) => (s ? String(s).charAt(0).toUpperCase() + String
 
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-export function copyText(text) {
+/**
+ * Copia texto para a área de transferência. Resolve true só se a cópia deu certo
+ * (a API moderna exige HTTPS e permissão; sem ela, tenta o método antigo).
+ */
+export async function copyText(text) {
   try {
-    return Promise.resolve(navigator.clipboard?.writeText(text));
-  } catch (err) {
-    return Promise.reject(err);
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* cai no método antigo */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
   }
 }
