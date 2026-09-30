@@ -92,8 +92,8 @@ const icon = (name, size = 16) => `<svg class="ic" width="${size}" height="${siz
 
 const RISK = [
   { max: 10, key: "baixo", label: "Baixo", tone: "success", range: "até 10%" },
-  { max: 25, key: "medio", label: "Médio", tone: "warning", range: "10–25%" },
-  { max: 50, key: "alto", label: "Alto", tone: "danger", range: "25–50%" },
+  { max: 25, key: "medio", label: "Médio", tone: "warning", range: "11–25%" },
+  { max: 50, key: "alto", label: "Alto", tone: "danger", range: "26–50%" },
   { max: Infinity, key: "critico", label: "Crítico", tone: "danger", range: "acima de 50%" },
 ];
 const prioridade = (raw) => (raw > 500 ? { label: "Alta", tone: "danger" } : raw > 100 ? { label: "Média", tone: "warning" } : { label: "Baixa", tone: "neutral" });
@@ -315,7 +315,7 @@ export function buildReportHTML(res, ai = {}, opts = {}) {
   const totalMed = Number(res?.totalMedicos) || 0;
   const comDiv = Number(res?.medicosComDivergencia) || divs.length;
   const pct = totalMed ? Math.round((comDiv / totalMed) * 100) : 0;
-  const risk = RISK.find((r) => pct < r.max) || RISK[RISK.length - 1];
+  const risk = RISK.find((r) => pct <= r.max) || RISK[RISK.length - 1];
   const riskIdx = RISK.indexOf(risk);
 
   const sobre = divs.filter((d) => d.sentido === "rep_maior");
@@ -377,7 +377,7 @@ export function buildReportHTML(res, ai = {}, opts = {}) {
     }).join("");
     return `<details class="acc"><summary><span class="av">${esc(initials(d.medico))}</span><span class="grow"><b style="font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.medico)}">${esc(titleCase(d.medico))}</b><small style="color:var(--ink-3);font-size:12px">${det.length ? plural(det.length, "paciente divergente", "pacientes divergentes") : "Sem detalhe por paciente"}</small></span>${diffValue(n)}<span class="chev">${icon("chevron", 18)}</span></summary>
 <div class="acc__b"><div class="tiles"><div class="tile"><div class="k">Produção</div><div class="v num">${esc(d.producao)}</div></div><div class="tile"><div class="k">Repasse</div><div class="v num">${esc(d.repasse)}</div></div><div class="tile"><div class="k">Diferença</div><div class="v">${diffValue(n)}</div></div></div>
-${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Tipo</th></tr></thead><tbody>${pr}</tbody></table>` : '<div class="empty">A comparação por paciente não foi feita nesta auditoria.</div>'}</div></details>`;
+${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Tipo</th></tr></thead><tbody>${pr}</tbody></table>` : '<div class="empty">Sem itens por paciente para este médico nesta auditoria.</div>'}</div></details>`;
   }).join("");
 
   // Tipos

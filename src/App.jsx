@@ -23,7 +23,7 @@ import { exportExcel, exportPDF } from "./lib/exporters.js";
 import { generateAIReport } from "./lib/aiReport.js";
 import { openReport } from "./lib/reportViewer.js";
 import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
-import { AiProgressModal } from "./components/ds/index.js";
+import { AiProgressModal, Modal, Button } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
 import { ToastProvider, useToast } from "./components/Toaster.jsx";
 import { LoginScreen, ForcePasswordChangeScreen, FirebaseSetupScreen, AuthLoading } from "./pages/auth.jsx";
@@ -34,7 +34,7 @@ import ReportPage from "./pages/ReportPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
-import { capitalize } from "./lib/display.js";
+import { capitalize, copyText } from "./lib/display.js";
 
 const AI_STEPS = [
   { label: 'Consolidando divergências por médico', state: 'pending' },
@@ -69,6 +69,10 @@ export default function App() {
   const [aiHidden,      setAiHidden]      = useState(false);
   const [aiError,       setAiError]       = useState(null);
   const [aiDone,        setAiDone]        = useState(0);
+  const [aiOpened,      setAiOpened]      = useState(true);
+  // Configurações com alterações não salvas: sair da tela pede confirmação.
+  const settingsDirty = useRef(false);
+  const [pendingLeave, setPendingLeave] = useState(null);
   const [histWarning,   setHistWarning]   = useState(null);
   const [refDetectada, setRefDetectada] = useState({ prod: null, rep: null });
   // Cache da leitura por arquivo: { file, promise }. A auditoria sempre usa a leitura do arquivo selecionado agora.
@@ -135,6 +139,8 @@ export default function App() {
   const usePreview = (key, file, setCols, setRows) => useEffect(() => {
     setCols(null); setRows(null);
     setRefDetectada((r) => ({ ...r, [key]: null }));
+    // Trocar ou remover o arquivo apaga o aviso de validação só deste card
+    setUploadError((prev) => (prev && prev[key] ? { ...prev, [key]: undefined } : prev));
     if (!file) { parsedCache.current[key] = null; return undefined; }
     let alive = true;
     readRows(key, file)
@@ -281,14 +287,15 @@ export default function App() {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     if (!VALID_EXT.includes(ext)) {
-      setUploadError({ geral: `Formato inválido: ".${ext}". Use .xlsx, .xls ou .csv.` });
+      // Mantém os avisos dos cards: o erro de formato é só sobre o arquivo recusado
+      setUploadError((prev) => ({ ...prev, geral: `Formato inválido: ".${ext}". Use .xlsx, .xls ou .csv.` }));
       return;
     }
     if (file.size > 50 * 1024 * 1024) {
-      setUploadError({ geral: "Arquivo muito grande. Limite de 50 MB por arquivo." });
+      setUploadError((prev) => ({ ...prev, geral: "Arquivo muito grande. Limite de 50 MB por arquivo." }));
       return;
     }
-    setUploadError(null);
+    setUploadError((prev) => (prev?.geral ? { ...prev, geral: undefined } : prev));
     setter(file);
   };
 
@@ -302,7 +309,7 @@ export default function App() {
         responsavel: getExportOptions(currentUser).responsavel,
         getIdToken: auth?.currentUser ? () => auth.currentUser.getIdToken() : undefined,
       });
-      openReport(html, { title: `Relatório IA · ${resultados.referencia || "Auditoria"}` });
+      setAiOpened(openReport(html, { title: `Relatório IA · ${resultados.referencia || "Auditoria"}` }));
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url  = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -330,8 +337,11 @@ export default function App() {
   };
 
   const startNewAudit = () => {
+    // Já na Nova auditoria: não apaga o que está sendo preenchido (aba, botão da sidebar ou "+")
+    if (activePage === "upload" || (activePage === "audits" && auditView === "new")) return;
     setActivePage("audits");
     setAuditView("new");
+    setPeriodoAuditoria('');
     setFile1(null);
     setFile2(null);
     setUploadError(null);
@@ -361,6 +371,13 @@ export default function App() {
   }
 
   // "upload" é o destino de startAudit quando a validação falha: mostra Nova auditoria com os erros.
+  const guardLeave = (fn) => (...args) => {
+    if (activePage === "settings-page" && args[0] === "settings-page") return; // já está em Configurações
+    if (activePage === "settings-page" && settingsDirty.current) { setPendingLeave(() => () => fn(...args)); return; }
+    fn(...args);
+  };
+  const confirmLeave = () => { const go = pendingLeave; settingsDirty.current = false; setPendingLeave(null); go && go(); };
+
   const page = processing ? "processing" : activePage === "upload" ? "audits-new" : activePage === "audits" && auditView === "new" ? "audits-new" : activePage;
   const navActive = ["results", "upload", "audits", "processing", "audits-new"].includes(page) ? "audits" : page === "settings" ? "settings-page" : page;
   const toList = { label: 'Auditorias', onClick: showAuditList };
@@ -381,8 +398,8 @@ export default function App() {
 
   return (
     <ToastProvider persistent={persistentToasts}>
-      <SuccessToasts aiDone={aiDone} deleteDone={deleteDone} />
-      <AppLayout user={currentUser} active={navActive} onNavigate={navigate} onNewAudit={startNewAudit} onLogout={handleLogout}
+      <SuccessToasts aiDone={aiDone} aiOpened={aiOpened} deleteDone={deleteDone} />
+      <AppLayout user={currentUser} active={navActive} onNavigate={guardLeave(navigate)} onNewAudit={guardLeave(startNewAudit)} onLogout={guardLeave(handleLogout)}
         crumbs={shell.crumbs} title={shell.title} back={shell.back}>
         {page === "processing" ? (
           <ProcessingPage steps={steps} progress={progress} />
@@ -391,7 +408,6 @@ export default function App() {
             onNewAudit={startNewAudit} onOpen={openEntry} onShowAudits={showAuditList} />
         ) : page === "audits-new" || page === "audits" ? (
           <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
-            historyCount={histStatus === "ready" ? (currentUser.role === 'admin' ? historico.filter(r => r.userId === currentUser.id).length : historico.length) : undefined}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
             upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep }} />
         ) : page === "results" ? (
@@ -407,7 +423,7 @@ export default function App() {
             onShare={() => {
               if (!resultados) return;
               const txt = `Auditoria ${resultados.referencia}\n${resultados.medicosComDivergencia} médicos com divergência — Valor total: ${resultados.valorTotal}`;
-              navigator.clipboard?.writeText(txt);
+              return copyText(txt);
             }}
             onNewAudit={startNewAudit}
           />
@@ -416,25 +432,30 @@ export default function App() {
         ) : page === "profile" ? (
           <ProfilePage currentUser={currentUser} onUpdateUser={handleUpdateUser} />
         ) : (
-          <SettingsPage currentUser={currentUser} />
+          <SettingsPage currentUser={currentUser} onDirtyChange={(d) => { settingsDirty.current = d; }} />
         )}
         {aiLoading && !aiHidden && (
           <AiProgressModal steps={AI_STEPS} onBackground={() => setAiHidden(true)}
             description="As divergências estão sendo analisadas para criar o relatório executivo. Você pode continuar usando o ConSaúde." />
         )}
+        <Modal open={Boolean(pendingLeave)} onClose={() => setPendingLeave(null)} icon="triangle-alert"
+          title="Sair sem salvar?" description="As alterações feitas em Configurações ainda não foram salvas e serão descartadas."
+          footer={<><Button variant="secondary" onClick={() => setPendingLeave(null)} data-autofocus>Continuar editando</Button><Button variant="danger" onClick={confirmLeave}>Descartar alterações</Button></>} />
       </AppLayout>
     </ToastProvider>
   );
 }
 
 /** Toasts de sucesso disparados por contadores do App (fora do provider não há acesso ao hook). */
-function SuccessToasts({ aiDone, deleteDone }) {
+function SuccessToasts({ aiDone, aiOpened, deleteDone }) {
   const toast = useToast();
   const seen = useRef({ aiDone, deleteDone });
   useEffect(() => {
-    if (aiDone > seen.current.aiDone) toast({ tone: 'ia', title: 'Relatório IA gerado', text: 'Ele foi aberto em uma nova aba e baixado.' });
+    if (aiDone > seen.current.aiDone) toast(aiOpened
+      ? { tone: 'ia', title: 'Relatório IA gerado', text: 'Ele foi aberto em uma nova aba e baixado.' }
+      : { tone: 'ia', title: 'Relatório IA gerado e baixado', text: 'O navegador bloqueou a nova aba. Abra o arquivo baixado ou use "Ver relatório IA" em Auditorias.', duration: 9000 });
     if (deleteDone > seen.current.deleteDone) toast({ tone: 'success', title: 'Auditoria excluída' });
     seen.current = { aiDone, deleteDone };
-  }, [aiDone, deleteDone, toast]);
+  }, [aiDone, aiOpened, deleteDone, toast]);
   return null;
 }

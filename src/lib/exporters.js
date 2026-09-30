@@ -510,7 +510,7 @@ export async function createPDF(res, opts = {}) {
     sectionTitle('Detalhamento por paciente', 'Itens divergentes de cada médico, paciente a paciente. Diferença = Repasse – Produção.', m.hasPatientDetail ? { newPage: true } : { need: 30 });
     if (!m.hasPatientDetail) {
       font(9.5, 'normal', C.ink2);
-      doc.text(doc.splitTextToSize('A comparação por paciente não estava habilitada nesta auditoria, por isso não há itens por paciente.', CW), PAGE.m, y + 2);
+      doc.text(doc.splitTextToSize('Esta auditoria não tem itens por paciente (a comparação por paciente estava desligada ou as planilhas não têm coluna de paciente).', CW), PAGE.m, y + 2);
       y += 10;
     }
     m.doctors.filter(() => m.hasPatientDetail).forEach((d) => {
@@ -946,7 +946,7 @@ export async function createWorkbook(res, opts = {}) {
     t.height = 20;
   } else {
     wi.getCell('A2').value = m.doctors.length
-      ? 'A comparação por paciente não estava habilitada nesta auditoria.'
+      ? 'Esta auditoria não tem itens por paciente (a comparação por paciente estava desligada ou as planilhas não têm coluna de paciente).'
       : 'Nenhuma divergência encontrada.';
     wi.getCell('A2').font = { name: FONT, italic: true, color: { argb: X.ink3 } };
   }

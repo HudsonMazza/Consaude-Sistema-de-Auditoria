@@ -49,6 +49,24 @@ export function normalizeCol(s) {
     .trim();
 }
 
+/**
+ * Escolhe a aba com os dados: a primeira que tem colunas de médico e de valor reconhecíveis
+ * (ignora capa, resumo e abas vazias). Sem nenhuma assim, a primeira aba com linhas; senão, a primeira.
+ */
+function pickSheetRows(wb) {
+  let firstWithRows = null;
+  for (const name of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "", raw: true });
+    if (!rows.length) continue;
+    const cols = detectColumns(rows);
+    if (cols.medicoCol && cols.valorCol && validateFile(rows, cols).length === 0) return rows;
+    if (!firstWithRows) firstWithRows = rows;
+  }
+  if (firstWithRows) return firstWithRows;
+  const first = wb.Sheets[wb.SheetNames[0]];
+  return first ? XLSX.utils.sheet_to_json(first, { defval: "", raw: true }) : [];
+}
+
 /** Decodifica o CSV: UTF-8 (com ou sem BOM) e, se não for UTF-8 válido, Windows-1252 (padrão do Excel no Brasil). */
 function decodeCsv(bytes) {
   try {
@@ -70,9 +88,7 @@ export function parseExcel(file) {
         const wb = isCsv
           ? XLSX.read(decodeCsv(bytes), { type: "string", raw: true })
           : XLSX.read(bytes, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "", raw: true });
-        resolve(rows);
+        resolve(pickSheetRows(wb));
       } catch (err) { reject(err); }
     };
     reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
