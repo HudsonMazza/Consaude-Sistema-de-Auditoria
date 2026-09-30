@@ -11,7 +11,7 @@ import { useToast } from '../components/Toaster.jsx';
 const ORDER = ['pendente', 'revisado', 'corrigido'];
 const NEXT_LABEL = { pendente: 'Marcar como revisado', revisado: 'Marcar como corrigido', corrigido: 'Voltar para pendente' };
 
-export default function ReportPage({ selectedMedico, setSelectedMedico, resultados, onExportExcel, onExportPDF, onShare, onNewAudit, onGenerateAI, aiLoading, statuses, setStatuses }) {
+export default function ReportPage({ selectedMedico, setSelectedMedico, resultados, exportFormat = 'PDF', onExportExcel: exportExcelRaw, onExportPDF: exportPDFRaw, onShare, onNewAudit, onGenerateAI, aiLoading, statuses, setStatuses }) {
   const { compact } = useViewport();
   const toast = useToast();
   const divs      = resultados?.divergencias ?? [];
@@ -60,13 +60,20 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
   const processed = splitDateTime(resultados.processadoEm);
   const pctMedicos = resultados.totalMedicos ? (resultados.medicosComDivergencia / resultados.totalMedicos) * 100 : 0;
 
+  // Exportações são assíncronas (bibliotecas carregadas sob demanda): avisa se falharem.
+  const guard = (fn) => () => Promise.resolve(fn?.()).catch(() => toast({ tone: 'error', title: 'Não foi possível exportar', text: 'Tente novamente em instantes.' }));
+  const onExportExcel = guard(exportExcelRaw);
+  const onExportPDF = guard(exportPDFRaw);
+  const excelDefault = exportFormat === 'XLSX';
+  const onExportDefault = excelDefault ? onExportExcel : onExportPDF;
+
   const onCopySummary = () => { onShare(); toast({ tone: 'success', title: 'Resumo copiado', text: 'Cole onde precisar.' }); };
-  const exportItems = [
-    { label: 'Excel (.xlsx)', icon: 'file-spreadsheet', variant: 'export', onSelect: onExportExcel },
-    { label: 'PDF', icon: 'file-text', onSelect: onExportPDF },
-  ];
+  // Formato padrão (Configurações) vem primeiro e é a ação direta do botão Exportar.
+  const excelItem = { label: 'Excel (.xlsx)', icon: 'file-spreadsheet', variant: 'export', onSelect: onExportExcel };
+  const pdfItem = { label: 'PDF', icon: 'file-text', onSelect: onExportPDF };
+  const exportItems = excelDefault ? [excelItem, pdfItem] : [pdfItem, excelItem];
   const more = [
-    ...(compact ? [{ label: 'Exportar Excel', icon: 'file-spreadsheet', variant: 'export', onSelect: onExportExcel }, { label: 'Exportar PDF', icon: 'file-text', onSelect: onExportPDF }] : []),
+    ...(compact ? exportItems.map((it) => ({ ...it, label: it === excelItem ? 'Exportar Excel' : 'Exportar PDF' })) : []),
     { label: 'Copiar resumo', icon: 'copy', onSelect: onCopySummary },
     { label: 'Nova auditoria', icon: 'plus', onSelect: onNewAudit },
   ];
@@ -100,8 +107,13 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
           </div>
         </div>
         <div className="cs-pagehead__actions">
-          {!compact && <ActionMenu label="Exportar" items={exportItems}
-            trigger={(p) => <Button variant="secondary" icon="download" iconEnd="chevron-down" {...p}>Exportar</Button>} />}
+          {!compact && (
+            <span className="cs-split">
+              <Button variant="secondary" icon="download" onClick={onExportDefault} title={`Exportar em ${excelDefault ? 'Excel' : 'PDF'} (formato padrão)`}>{excelDefault ? 'Exportar Excel' : 'Exportar PDF'}</Button>
+              <ActionMenu label="Escolher formato de exportação" title="Exportar como" items={exportItems}
+                trigger={(p) => <IconButton icon="chevron-down" label="Escolher formato de exportação" variant="secondary" {...p} />} />
+            </span>
+          )}
           <Button variant="ia" onClick={onGenerateAI} disabled={aiLoading} loading={aiLoading}>{aiLoading ? 'Gerando relatório IA…' : 'Relatório IA'}</Button>
           <ActionMenu items={more} label="Mais ações da auditoria" title="Ações da auditoria"
             trigger={(p) => <IconButton icon="ellipsis" label="Mais ações" variant="secondary" round {...p} />} />

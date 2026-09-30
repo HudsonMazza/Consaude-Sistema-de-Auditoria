@@ -1,44 +1,58 @@
-// Configurações — mesma lógica e armazenamento de antes (localStorage: cs_clinic e cs_audit_cfg).
-import React, { useState } from 'react';
-import { getClinicSettings, saveClinicSettings } from '../lib/clinicSettings.js';
-import { Button, Card, SettingsSection, TextField, MaskedField, SegmentedControl, Callout, ActionBar, PageHeader } from '../components/ds/index.js';
+// Configurações — preferências salvas só neste navegador:
+// tema (cs-theme, src/lib/theme.js) e preferências de auditoria/exportação (cs_audit_cfg, src/lib/preferences.js).
+// O sistema atende uma única clínica, então não há mais "Identificação da clínica".
+import React, { useEffect, useState } from 'react';
+import { getPreferences, savePreferences, MAX_TOLERANCE } from '../lib/preferences.js';
+import { getThemePreference, setThemePreference, onThemeChange } from '../lib/theme.js';
+import {
+  Button, Card, SettingsSection, TextField, CurrencyField, SegmentedControl, Checkbox, Callout, ActionBar, PageHeader,
+  formatBRL, titleCase,
+} from '../components/ds/index.js';
 import { useToast } from '../components/Toaster.jsx';
 
-export default function SettingsPage() {
+function SegmentedField({ label, help, ...props }) {
+  return (
+    <div className="cs-field">
+      <span className="cs-field__label" aria-hidden="true">{label}</span>
+      <SegmentedControl label={label} block {...props} />
+      {help && <span className="cs-field__help">{help}</span>}
+    </div>
+  );
+}
+
+export default function SettingsPage({ currentUser }) {
   const toast = useToast();
-  const [clinic, setClinic] = useState(getClinicSettings);
-  const [audit,  setAudit]  = useState(() => {
-    try { return JSON.parse(localStorage.getItem('cs_audit_cfg')||'null') || { tolerancia:'0,01', formato:'PDF' }; }
-    catch { return { tolerancia:'0,01', formato:'PDF' }; }
-  });
+  const [prefs, setPrefs] = useState(getPreferences);
+  const [theme, setThemeField] = useState(getThemePreference);
+  const [themeTouched, setThemeTouched] = useState(false);
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
+
+  // O tema também pode ser trocado pelo menu da conta: mantém o campo em dia se ele não foi alterado aqui.
+  useEffect(() => onThemeChange(() => { if (!themeTouched) setThemeField(getThemePreference()); }), [themeTouched]);
+
+  const update = (fn) => { setPrefs((current) => fn(current)); setDirty(true); };
+  const setTop = (key) => (value) => update((p) => ({ ...p, [key]: value }));
+  const setNested = (group, key) => (value) => update((p) => ({ ...p, [group]: { ...p[group], [key]: value } }));
+  const toggle = (group, key) => () => update((p) => ({ ...p, [group]: { ...p[group], [key]: !p[group][key] } }));
 
   const save = (event) => {
     event?.preventDefault();
     setError('');
-    const normalizedClinic = {
-      name: clinic.name.trim(),
-      cnpj: clinic.cnpj.trim(),
-      email: clinic.email.trim(),
-    };
-    if (!normalizedClinic.name) {
-      setError('Informe o nome da clínica.');
-      return;
-    }
-    if (normalizedClinic.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClinic.email)) {
-      setError('Informe um e-mail de relatórios válido.');
-      return;
-    }
-    const toleranceValue = Number(String(audit.tolerancia).replace(',', '.'));
-    if (!Number.isFinite(toleranceValue) || toleranceValue < 0) {
+    const tolerance = Number(prefs.tolerancia);
+    if (!Number.isFinite(tolerance) || tolerance < 0) {
       setError('Informe uma tolerância válida, igual ou maior que zero.');
       return;
     }
+    if (tolerance > MAX_TOLERANCE) {
+      setError(`A tolerância pode ser de no máximo ${formatBRL(MAX_TOLERANCE)}.`);
+      return;
+    }
     try {
-      saveClinicSettings(normalizedClinic);
-      localStorage.setItem('cs_audit_cfg', JSON.stringify(audit));
-      setClinic(normalizedClinic);
+      const saved = savePreferences(prefs);
+      setThemePreference(theme);
+      setPrefs(saved);
+      setThemeTouched(false);
       setDirty(false);
       toast({ tone: 'success', title: 'Configurações salvas neste navegador.' });
     } catch {
@@ -46,29 +60,54 @@ export default function SettingsPage() {
     }
   };
 
-  const setC = (key) => (event) => { const v = event?.target ? event.target.value : event; setClinic(current => ({ ...current, [key]: v })); setDirty(true); };
+  const userName = currentUser?.name ? titleCase(currentUser.name) : '';
+  const tol = formatBRL(Number(prefs.tolerancia) || 0);
 
   return (
     <>
-      <PageHeader title="Configurações" subtitle="Dados usados nos relatórios e preferências padrão de auditoria." />
+      <PageHeader title="Configurações" subtitle="Aparência, padrões de auditoria e exportação. Tudo fica salvo neste navegador." />
       {error && <Callout tone="danger" title="Não foi possível salvar">{error}</Callout>}
       <form id="settings-form" onSubmit={save} noValidate>
         <Card>
-          <SettingsSection title="Identificação da clínica" description="Dados exibidos nos relatórios exportados.">
-            <TextField className="cs-full" label="Nome da clínica" value={clinic.name} placeholder="ConSaúde" required prefixIcon="building-2" onChange={setC('name')} />
-            <MaskedField mask="cnpj" label="CNPJ" optional value={clinic.cnpj} placeholder="00.000.000/0001-00" help="Formato 00.000.000/0001-00." onChange={setC('cnpj')} />
-            <TextField label="E-mail de relatórios" optional type="email" value={clinic.email} placeholder="relatorios@consaude.com.br" autoComplete="email" prefixIcon="mail" onChange={setC('email')} />
+          <SettingsSection title="Aparência" description="Tema da interface neste navegador.">
+            <SegmentedField label="Tema" value={theme}
+              help="Automático acompanha o tema claro ou escuro do sistema."
+              onChange={(v) => { setThemeField(v); setThemeTouched(true); setDirty(true); }}
+              options={[{ id: 'dark', label: 'Escuro', icon: 'moon' }, { id: 'light', label: 'Claro', icon: 'sun' }, { id: 'system', label: 'Automático', icon: 'monitor' }]} />
           </SettingsSection>
-          <SettingsSection title="Preferências de auditoria" description="Valores usados como padrão em novos relatórios.">
-            <TextField label="Tolerância de divergência" prefix="R$" numeric value={audit.tolerancia} placeholder="0,01" inputMode="decimal"
-              help="Diferenças abaixo deste valor podem ser ignoradas."
-              onChange={event => { setAudit(current => ({ ...current, tolerancia:event.target.value })); setDirty(true); }} />
-            <div className="cs-field">
-              <span className="cs-field__label" aria-hidden="true">Formato padrão de exportação</span>
-              <SegmentedControl label="Formato padrão de exportação" block value={audit.formato}
-                onChange={(v) => { setAudit(current => ({ ...current, formato:v })); setDirty(true); }}
-                options={[{ id: 'PDF', label: 'PDF', icon: 'file-text' }, { id: 'XLSX', label: 'Excel (.xlsx)', icon: 'file-spreadsheet' }]} />
+
+          <SettingsSection title="Preferências de auditoria" description="Valores usados como padrão ao processar e exportar auditorias.">
+            <CurrencyField label="Tolerância de divergência" value={Number(prefs.tolerancia) || 0}
+              help="Médicos com diferença total abaixo deste valor não entram como divergência. Vale só para novas auditorias."
+              onChange={setTop('tolerancia')} />
+            <SegmentedField label="Formato padrão de exportação" value={prefs.formato}
+              help="Usado pelo botão Exportar do relatório."
+              onChange={setTop('formato')}
+              options={[{ id: 'PDF', label: 'PDF', icon: 'file-text' }, { id: 'XLSX', label: 'Excel (.xlsx)', icon: 'file-spreadsheet' }]} />
+          </SettingsSection>
+
+          <SettingsSection title="Padrões da nova auditoria" description="Opções de comparação que já vêm marcadas em Nova auditoria. Você ainda pode mudá-las em cada auditoria.">
+            <div className="cs-full cs-stack" style={{ gap: 16 }}>
+              <Checkbox label="Ignorar diferenças abaixo da tolerância" checked={prefs.novaAuditoria.ignorar} onChange={toggle('novaAuditoria', 'ignorar')}
+                description={`Com a tolerância atual, médicos com diferença menor que ${tol} não entram no relatório.`} />
+              <Checkbox label="Comparar pacientes pelo nome" checked={prefs.novaAuditoria.comparaNome} onChange={toggle('novaAuditoria', 'comparaNome')}
+                description="Detalha cada médico com divergência paciente a paciente." />
+              <Checkbox label="Gerar análise inteligente" checked={prefs.novaAuditoria.ia} onChange={toggle('novaAuditoria', 'ia')}
+                description="Cria os pontos de atenção exibidos no relatório." />
             </div>
+          </SettingsSection>
+
+          <SettingsSection title="Exportação" description="O que entra nos arquivos PDF e Excel exportados.">
+            <div className="cs-full cs-stack" style={{ gap: 16 }}>
+              <Checkbox label="Incluir detalhamento por paciente no PDF" checked={prefs.exportacao.detalhePacientes} onChange={toggle('exportacao', 'detalhePacientes')}
+                description="Adiciona ao PDF uma tabela de itens por paciente para cada médico. O Excel sempre traz todos os itens." />
+              <Checkbox label="Incluir análise inteligente" checked={prefs.exportacao.insights} onChange={toggle('exportacao', 'insights')}
+                description="Leva os pontos de atenção da auditoria para o PDF e para o Excel." />
+            </div>
+            <TextField className="cs-full" label="Nome do responsável no relatório" optional prefixIcon="user" maxLength={120}
+              value={prefs.exportacao.responsavel} placeholder={userName || 'Nome de quem está logado'}
+              help={userName ? `Em branco, usa o nome de quem está logado (${userName}).` : 'Em branco, usa o nome de quem está logado.'}
+              onChange={(event) => setNested('exportacao', 'responsavel')(event.target.value)} />
             <div className="cs-full"><Callout tone="neutral" icon="info">Estas preferências ficam armazenadas somente neste navegador.</Callout></div>
           </SettingsSection>
         </Card>
