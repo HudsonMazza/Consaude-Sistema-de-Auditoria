@@ -1,53 +1,42 @@
 // Relatório IA: análise da OpenAI (prompt inalterado) + HTML autocontido no visual do design system ConSaúde.
-import { brl, parseValue } from "./engine.js";
+import { parseValue } from "./engine.js";
+import { resumoParaIA, buildPrompt, callOpenAI } from "./aiPrompt.js";
 
-// ─── AI REPORT ───────────────────────────────────────────────────────────────
+// ─── ANÁLISE DA IA ───────────────────────────────────────────────────────────
+// O caminho principal é a função de servidor /api/ai-analysis (a chave da OpenAI fica só no servidor).
+// Se ela não existir neste deploy (ex.: `npm run dev` ou hospedagem sem funções), usa a chave
+// do navegador (VITE_OPENAI_API_KEY) enquanto ela ainda estiver configurada.
 
-export async function fetchAIAnalysis(res, apiKey) {
-  const pct  = Math.round((res.medicosComDivergencia / res.totalMedicos) * 100);
-  const sobre = res.divergencias.filter(d => d.sentido === "rep_maior");
-  const sub   = res.divergencias.filter(d => d.sentido === "prod_maior");
-  const vS = sobre.reduce((s,d)=>s+d.diferencaRaw,0);
-  const vU = sub.reduce((s,d)=>s+d.diferencaRaw,0);
-  const tf = {}; res.divergencias.flatMap(d=>d.detalhes.map(p=>p.tipo)).forEach(t=>{tf[t]=(tf[t]||0)+1;});
-  const top5 = res.divergencias.slice(0,5).map(d=>d.medico+": "+(d.sentido==="rep_maior"?"Rep":"Prod")+" maior em "+d.diferenca).join("; ");
+async function fetchAIAnalysisServer(resumo, getIdToken) {
+  if (typeof getIdToken !== "function") return null;
+  const token = await getIdToken();
+  let r;
+  try {
+    r = await fetch("/api/ai-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ resumo }),
+    });
+  } catch {
+    return null; // sem rede para a função → tenta o caminho antigo
+  }
+  const isJson = (r.headers.get("content-type") || "").includes("application/json");
+  if (!isJson || r.status === 404 || r.status === 405) return null; // função não publicada neste deploy
+  const data = await r.json().catch(() => null);
+  if (r.status === 503 && data?.code === "not-configured") return null;
+  if (!r.ok || !data?.ai) throw new Error(data?.error || `Erro ${r.status} ao gerar a análise.`);
+  return data.ai;
+}
 
-  const prompt = "Voce e um auditor financeiro senior especialista em clinicas medicas no Brasil.\n"
-    +"Analise os dados de auditoria abaixo e responda APENAS com JSON valido (sem markdown).\n\n"
-    +"DADOS:\n"
-    +"- Referencia: "+res.referencia+"\n"
-    +"- "+res.totalMedicos+" medicos, "+res.medicosComDivergencia+" com divergencia ("+pct+"%)\n"
-    +"- Valor divergente: "+res.valorTotal+"\n"
-    +"- Repasse>Producao (sobrepagamento): "+sobre.length+" medicos, "+brl(vS)+"\n"
-    +"- Producao>Repasse (subpagamento): "+sub.length+" medicos, "+brl(vU)+"\n"
-    +"- Top casos: "+top5+"\n"
-    +"- Tipos de divergencia: "+JSON.stringify(tf)+"\n\n"
-    +"Responda EXATAMENTE neste JSON (todos campos obrigatorios, portugues, profissional):\n"
-    +JSON.stringify({
-      resumoExecutivo:"1-2 frases executivas",
-      interpretacaoRisco:"1 frase sobre o nivel de risco",
-      analisesPorTipo:[{tipo:"nome exato",interpretacao:"significado em 1-2 frases",prevencao:"como prevenir"}],
-      planoDeAcao:[{acao:"acao concreta",prazo:"48 horas",responsavel:"Equipe de Faturamento",impacto:"impacto esperado",urgencia:"alta"}],
-      insights:["observacao 1","observacao 2","observacao 3"],
-      anomalias:["padrao 1","padrao 2"],
-      recomendacoes:["recomendacao 1","recomendacao 2","recomendacao 3"],
-      conclusao:"1-2 frases de conclusao"
-    },null,2);
-
-  const r = await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey},
-    body:JSON.stringify({
-      model:"gpt-4o",
-      messages:[{role:"user",content:prompt}],
-      response_format:{type:"json_object"},
-      max_tokens:2500,
-      temperature:0.25,
-    }),
-  });
-  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message??"Erro "+r.status+" na API OpenAI");}
-  const d=await r.json();
-  return JSON.parse(d.choices[0].message.content);
+export async function fetchAIAnalysis(resultados, { getIdToken } = {}) {
+  const resumo = resumoParaIA(resultados);
+  const viaServidor = await fetchAIAnalysisServer(resumo, getIdToken);
+  if (viaServidor) return viaServidor;
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  if (!apiKey || apiKey.includes("cole_sua")) {
+    throw new Error("A análise por IA não está configurada. Defina OPENAI_API_KEY nas variáveis de ambiente do servidor.");
+  }
+  return callOpenAI(buildPrompt(resumo), apiKey);
 }
 
 // ─── HTML DO RELATÓRIO (design system ConSaúde) ──────────────────────────────
@@ -534,11 +523,7 @@ async function loadLogoDataUrl() {
 }
 
 export async function generateAIReport(resultados, opts = {}) {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey || apiKey.includes("cole_sua")) {
-    throw new Error("Configure VITE_OPENAI_API_KEY no arquivo .env com sua chave da OpenAI.");
-  }
-  const [ai, logoDataUrl] = await Promise.all([fetchAIAnalysis(resultados, apiKey), loadLogoDataUrl()]);
+  const [ai, logoDataUrl] = await Promise.all([fetchAIAnalysis(resultados, opts), loadLogoDataUrl()]);
   const theme = opts.theme || (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "dark";
-  return buildReportHTML(resultados, ai, { ...opts, logoDataUrl, theme });
+  return buildReportHTML(resultados, ai, { responsavel: opts.responsavel, logoDataUrl, theme });
 }
