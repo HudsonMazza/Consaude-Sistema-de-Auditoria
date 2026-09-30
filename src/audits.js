@@ -1,8 +1,14 @@
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-  query, where, orderBy, serverTimestamp,
+  query, where, orderBy, serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { parseBRDateTime } from "./dashboard.js";
+
+/** O Firestore recusa campos `undefined`: remove-os (itens legados às vezes não têm todos os campos). */
+function semIndefinidos(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
 
 // ─── HISTÓRICO DE AUDITORIAS (Firestore) ──────────────────────────────────────
 //
@@ -61,6 +67,21 @@ export async function salvarRelatorioIA(auditId, resultadosAtuais, html) {
   return true;
 }
 
+const STATUS_VALIDOS = new Set(["pendente", "revisado", "corrigido"]);
+
+/**
+ * Salva os status de revisão (Pendente/Revisado/Corrigido) na auditoria, para valerem
+ * ao reabrir e nas exportações pelo histórico. Precisa da regra do Firestore que permite
+ * o campo `statuses` (firestore.rules); sem ela o Firestore recusa com permission-denied.
+ */
+export function salvarStatuses(auditId, statuses) {
+  const limpo = {};
+  Object.entries(statuses || {}).slice(0, 5000).forEach(([k, v]) => {
+    if (STATUS_VALIDOS.has(v) && v !== "pendente") limpo[String(k).slice(0, 200)] = v;
+  });
+  return updateDoc(doc(db, AUDITS_COL, auditId), { statuses: limpo });
+}
+
 export function excluirAuditoria(auditId) {
   return deleteDoc(doc(db, AUDITS_COL, auditId));
 }
@@ -105,9 +126,11 @@ export async function migrarHistoricoLocal(currentUser) {
       ...(e.aiReportHTML ? { aiReportHTML: e.aiReportHTML } : {}),
     };
     if (tamanhoBytes(payload) > TAMANHO_MAX_BYTES) throw { skip: "tamanho", id: e.id };
+    // Mantém a data original da auditoria (senão ela cairia no dia da migração no histórico e no dashboard)
+    const original = parseBRDateTime(e.resultados?.processadoEm) || parseBRDateTime(e.data);
     await addDoc(collection(db, AUDITS_COL), {
-      ...payload, userId, userName: e.userName || currentUser.name,
-      createdAt: serverTimestamp(), migradoDoNavegador: true,
+      ...semIndefinidos(payload), userId, userName: e.userName || currentUser.name,
+      createdAt: original ? Timestamp.fromDate(original) : serverTimestamp(), migradoDoNavegador: true,
     });
     return e.id;
   }));

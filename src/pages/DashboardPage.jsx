@@ -6,7 +6,7 @@ import {
   DataTable, ResultBadge, SegmentedControl, SheetSelect, PageHeader, Callout, EmptyState, ErrorState, Skeleton,
   formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
-import { auditTime, auditValue, auditMonthKey, hasDifferences, capitalize } from '../lib/display.js';
+import { auditTime, auditValue, auditMonthKey, hasDifferences, auditItemCount, capitalize } from '../lib/display.js';
 
 const PERIODS = [{ id: '3', label: '3 meses' }, { id: '6', label: '6 meses' }, { id: '12', label: '12 meses' }];
 
@@ -129,12 +129,12 @@ export default function DashboardPage({ historico, currentUser, onNewAudit, onOp
                 columns={[
                   { key: 'ref', header: 'Referência', render: (a) => <span className="cs-cell-main"><span className="cs-cell-main__title">{capitalize(a.periodo) || 'Sem referência'}</span>{isAdmin && a.userName && <span className="cs-cell-main__sub">{titleCase(a.userName)}</span>}</span> },
                   { key: 'date', header: 'Data', render: (a) => <span className="cs-cell-main"><span className="cs-num">{a.data || '—'}</span>{auditTime(a) && <span className="cs-cell-main__sub cs-num">{auditTime(a)}</span>}</span> },
-                  { key: 'res', header: 'Resultado', render: (a) => <ResultBadge divergences={Number(a.divergencias) || 0} /> },
+                  { key: 'res', header: 'Resultado', render: (a) => <ResultBadge divergences={auditItemCount(a)} /> },
                   { key: 'value', header: 'Valor divergente', align: 'right', render: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : <span className="cs-faint">—</span>) },
                 ]}
                 primaryAction={(a) => ({ label: 'Abrir', iconEnd: 'chevron-right', ariaLabel: 'Abrir ' + (a.periodo || 'auditoria'), onClick: () => onOpen(a) })}
                 onRowClick={onOpen}
-                mobile={{ title: (a) => capitalize(a.periodo) || 'Sem referência', value: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : '—'), meta: (a) => <><span className="cs-num">{a.data || '—'}</span>{isAdmin && a.userName && <span>{titleCase(a.userName)}</span>}</>, tags: (a) => <ResultBadge divergences={Number(a.divergencias) || 0} size="sm" /> }} />
+                mobile={{ title: (a) => capitalize(a.periodo) || 'Sem referência', value: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : '—'), meta: (a) => <><span className="cs-num">{a.data || '—'}</span>{isAdmin && a.userName && <span>{titleCase(a.userName)}</span>}</>, tags: (a) => <ResultBadge divergences={auditItemCount(a)} size="sm" /> }} />
             </Card>
             <Card className="cs-span-4 cs-md-6" title="Maiores impactos" subtitle="Médicos com maior valor divergente">
               {summary.topDoctors.length

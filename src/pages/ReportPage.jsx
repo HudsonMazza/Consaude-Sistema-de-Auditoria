@@ -13,7 +13,7 @@ import { useToast } from '../components/Toaster.jsx';
 const ORDER = ['pendente', 'revisado', 'corrigido'];
 const NEXT_LABEL = { pendente: 'Marcar como revisado', revisado: 'Marcar como corrigido', corrigido: 'Voltar para pendente' };
 
-export default function ReportPage({ selectedMedico, setSelectedMedico, resultados, exportFormat = 'PDF', onExportExcel: exportExcelRaw, onExportPDF: exportPDFRaw, onShare, onNewAudit, onGenerateAI, aiLoading, statuses, setStatuses }) {
+export default function ReportPage({ selectedMedico, setSelectedMedico, resultados, exportFormat = 'PDF', onExportExcel: exportExcelRaw, onExportPDF: exportPDFRaw, onShare, onNewAudit, onGenerateAI, aiLoading, statuses, setStatuses, statusesPersist = false }) {
   const { compact } = useViewport();
   const toast = useToast();
   const divs      = resultados?.divergencias ?? [];
@@ -31,9 +31,11 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
   const [sort, setSort] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
+  // Busca sem diferenciar acento nem maiúsculas ("joao" acha "João" e vice-versa)
+  const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  const normalizedQuery = fold(query.trim());
   const visibleDivs = divs.filter((row) => {
-    const matchesQuery = !normalizedQuery || String(row.medico || '').toLocaleLowerCase('pt-BR').includes(normalizedQuery);
+    const matchesQuery = !normalizedQuery || fold(row.medico).includes(normalizedQuery);
     const matchesStatus = statusFilter === 'all' || getStatus(row.id) === statusFilter;
     return matchesQuery && matchesStatus;
   });
@@ -60,6 +62,13 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
   const total = Number(resultados.valorTotalRaw);
   const heroValue = Number.isFinite(total) ? formatBRL(total) : resultados.valorTotal;
   const processed = splitDateTime(resultados.processadoEm);
+  // Linhas sem nome de médico não entram no cruzamento (antes sumiam sem aviso)
+  const sm = resultados.linhasSemMedico;
+  const semMedicoParte = (x, nome) => (x?.linhas ? `${formatNumber(x.linhas)} ${x.linhas === 1 ? 'linha' : 'linhas'} no ${nome} (${formatBRL(x.valor)})` : null);
+  const semMedicoPartes = sm ? [semMedicoParte(sm.prod, 'relatório de Produção'), semMedicoParte(sm.rep, 'relatório de Repasse')].filter(Boolean) : [];
+  const semMedico = semMedicoPartes.length
+    ? `${semMedicoPartes.join(' e ')} não têm nome de médico e não entraram no cruzamento. Confira se a planilha tem células mescladas ou linhas de subtotal.`
+    : null;
   const pctMedicos = resultados.totalMedicos ? (resultados.medicosComDivergencia / resultados.totalMedicos) * 100 : 0;
 
   // Exportações são assíncronas (bibliotecas carregadas sob demanda): avisa se falharem.
@@ -152,8 +161,14 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
         )}
       </div>
 
+      {semMedico && (
+        <Callout tone="warning" title="Linhas sem nome de médico ficaram de fora">
+          {semMedico}
+        </Callout>
+      )}
+
       <Card flush title={<>Médicos com divergências <Count>{formatNumber(divs.length)}</Count></>}
-        subtitle="Diferença = Repasse − Produção. Abra um médico para ver os pacientes. O status de revisão vale para esta sessão.">
+        subtitle={`Diferença = Repasse − Produção. Abra um médico para ver os pacientes. ${statusesPersist ? 'O status de revisão fica salvo nesta auditoria.' : 'O status de revisão vale para esta sessão.'}`}>
         {divs.length > 0 && (
           <div className="cs-card-toolbar">
             <div className="cs-toolbar">

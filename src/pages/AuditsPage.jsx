@@ -9,7 +9,7 @@ import {
   PageHeader, Tabs, EmptyState, ErrorState, ConfirmDialog, Dropzone, UploadProgress, TextField, Accordion, Checkbox,
   Callout, Icon, ActionBar, sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from '../components/ds/index.js';
-import { auditTime, auditValue, auditSortValue, capitalize } from '../lib/display.js';
+import { auditTime, auditValue, auditSortValue, auditItemCount, capitalize } from '../lib/display.js';
 import { openReport } from '../lib/reportViewer.js';
 import { useToast } from '../components/Toaster.jsx';
 
@@ -49,7 +49,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
   const scopedHistory = historico.filter(row => !isAdmin || matchesAuditScope(row, scope, currentUser?.id));
   const withDifferences = scopedHistory.filter(row => Number(row.divergencias) > 0);
   const compliant = scopedHistory.filter(row => Number(row.divergencias) === 0);
-  const totalDifferences = scopedHistory.reduce((total, row) => total + (Number(row.divergencias) || 0), 0);
+  const totalDifferences = scopedHistory.reduce((total, row) => total + auditItemCount(row), 0);
   const withAI = scopedHistory.filter(row => row.aiReportHTML);
   const visibleHistory = scopedHistory.filter((row) => {
     const matchesQuery = !normalizedQuery || [row.data, row.periodo, row.arquivos, row.userName]
@@ -66,7 +66,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
     { key: 'ref', header: 'Referência', sortable: true, sortValue: (a) => String(a.periodo || '').toLocaleLowerCase('pt-BR'), render: (a) => <span className="cs-cell-main"><span className="cs-cell-main__title">{capitalize(a.periodo) || '—'}</span></span> },
     { key: 'files', header: 'Arquivos', priority: 3, render: (a) => <span className="cs-cell-main" style={{ maxWidth: 240 }}>{String(a.arquivos || '—').split(' / ').map((f, i) => <span key={i} className="cs-mono cs-truncate" title={f} style={{ color: 'var(--ink-2)' }}>{f}</span>)}</span> },
     ...(isAdmin ? [{ key: 'auditor', header: 'Auditor', priority: 2, render: (a) => a.userName ? <span className="cs-cell-person"><Avatar name={a.userName} size="sm" /><span className="cs-truncate" title={a.userName}>{titleCase(a.userName)}</span></span> : <span className="cs-faint">—</span> }] : []),
-    { key: 'res', header: 'Resultado', sortable: true, sortValue: (a) => Number(a.divergencias) || 0, render: (a) => <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}><ResultBadge divergences={Number(a.divergencias) || 0} />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm" title="Relatório IA disponível">IA</Badge>}</span> },
+    { key: 'res', header: 'Resultado', sortable: true, sortValue: (a) => auditItemCount(a), render: (a) => <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}><ResultBadge divergences={auditItemCount(a)} />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm" title="Relatório IA disponível">IA</Badge>}</span> },
     { key: 'value', header: 'Valor divergente', align: 'right', sortable: true, sortValue: auditValue, render: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : <span className="cs-faint">—</span>) },
   ];
   const sortedAll = sortRows(visibleHistory, columns, sort);
@@ -82,7 +82,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
     const items = [];
     if (row.resultados) {
       // Formato padrão (Configurações) primeiro.
-      const run = (fn) => () => Promise.resolve(fn(row.resultados, exportOptions?.())).catch(() => toast({ tone: 'error', title: 'Não foi possível exportar', text: 'Tente novamente em instantes.' }));
+      const run = (fn) => () => Promise.resolve(fn(row.resultados, { ...exportOptions?.(), statuses: row.statuses || {} })).catch(() => toast({ tone: 'error', title: 'Não foi possível exportar', text: 'Tente novamente em instantes.' }));
       const excel = { label: 'Exportar Excel', icon: 'file-spreadsheet', variant: 'export', onSelect: run(exportExcel) };
       const pdf = { label: 'Exportar PDF', icon: 'file-text', onSelect: run(exportPDF) };
       items.push(...(getPreferences().formato === 'XLSX' ? [excel, pdf] : [pdf, excel]));
@@ -143,7 +143,7 @@ function AuditList({ historico, onOpen, onDelete, onNewAudit, currentUser, statu
               title: (a) => refOf(a),
               value: (a) => (auditValue(a) ? formatBRL(auditValue(a)) : '—'),
               meta: (a) => <><span className="cs-num">{a.data || '—'}{auditTime(a) ? ' · ' + auditTime(a) : ''}</span>{isAdmin && a.userName && <span>{titleCase(a.userName)}</span>}</>,
-              tags: (a) => <><ResultBadge divergences={Number(a.divergencias) || 0} size="sm" />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm">IA</Badge>}</>,
+              tags: (a) => <><ResultBadge divergences={auditItemCount(a)} size="sm" />{a.aiReportHTML && <Badge tone="ia" icon="sparkles" size="sm">IA</Badge>}</>,
             }}
             footer={visibleHistory.length > 10 ? <Pagination page={current} pageSize={pageSize} total={visibleHistory.length} compact={compact} onPage={setPage} onPageSize={setPageSize} /> : null} />
         )}
@@ -174,7 +174,8 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
   const { compact } = useViewport();
   // Um arquivo com erro de validação precisa ser trocado antes de processar de novo.
   const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length);
-  const canStart = file1 && file2 && !hasFileErrors;
+  const reading = (file1 && rows1 == null) || (file2 && rows2 == null);
+  const canStart = file1 && file2 && !hasFileErrors && !reading;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
     { num: 1, title: 'Relatório de Produção', subtitle: 'O que cada médico produziu no período', file: file1, setFile: setFile1, cols: cols1, rows: rows1, err: uploadError?.prod },
@@ -200,7 +201,8 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
         <div style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: compact ? 12 : 20, alignItems: 'start' }}>
           {cards.map(({ num, title, subtitle, file, setFile, rows, err }) => (
             <Dropzone key={num} step={num} title={title} subtitle={subtitle} invalid={Boolean(err?.length)}
-              file={file ? { name: file.name, size: file.size, rows } : null}
+              reading={Boolean(file) && rows == null && !err?.length}
+              file={file ? { name: file.name, size: file.size, rows: rows != null && rows >= 0 ? rows : null } : null}
               onFile={(f) => handleFileSelect(f, setFile)}
               onReplace={(f) => handleFileSelect(f, setFile)}
               onRemove={() => setFile(null)}>
@@ -250,6 +252,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
       <div className="cs-span-12">
         <ActionBar icon={hasFileErrors ? 'circle-alert' : canStart ? 'circle-check' : 'info'}
           message={hasFileErrors ? 'Troque o arquivo indicado acima para processar a auditoria.'
+            : file1 && file2 && reading ? 'Lendo as planilhas…'
             : canStart ? 'Tudo pronto. A auditoria será processada com as opções acima.'
             : <span>{!file1 && !file2 ? 'Faltam' : 'Falta'} {missing} para processar.</span>}>
           {!compact && <Button variant="ghost" onClick={onShowAudits}>Cancelar</Button>}

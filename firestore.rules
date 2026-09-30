@@ -47,11 +47,15 @@ service cloud.firestore {
         && request.resource.data.disabled == false;
 
       allow update: if
-        // Admin edita nome, cargo, papel e ativação de qualquer conta.
+        // Admin edita nome, cargo, papel e ativação de qualquer conta — menos o próprio
+        // papel e a própria ativação (evita um admin se trancar para fora sem querer).
         (
           admin()
           && roleValido(request.resource.data)
           && request.resource.data.email == resource.data.email
+          && (request.auth.uid != uid
+              || (request.resource.data.role == resource.data.role
+                  && request.resource.data.get('disabled', false) == resource.data.get('disabled', false)))
         )
         ||
         // O próprio usuário só ajusta nome/cargo/foto e baixa o flag de troca de
@@ -84,13 +88,18 @@ service cloud.firestore {
         && (admin() || request.resource.data.userId == request.auth.uid)
         && auditoriaValida(request.resource.data);
 
-      // Único update permitido pelo app: anexar o relatório de IA depois de
-      // gerado. Teto de tamanho pela mesma razão do `photo` em users/{uid}.
+      // Updates permitidos pelo app: anexar o relatório de IA depois de gerado e
+      // salvar os status de revisão (Revisado/Corrigido) por médico. Teto de tamanho
+      // pela mesma razão do `photo` em users/{uid}.
       allow update: if ativo()
         && (admin() || resource.data.userId == request.auth.uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiReportHTML'])
-        && request.resource.data.aiReportHTML is string
-        && request.resource.data.aiReportHTML.size() < 900000;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiReportHTML', 'statuses'])
+        && (!('aiReportHTML' in request.resource.data)
+            || (request.resource.data.aiReportHTML is string
+                && request.resource.data.aiReportHTML.size() < 900000))
+        && (!('statuses' in request.resource.data)
+            || (request.resource.data.statuses is map
+                && request.resource.data.statuses.size() <= 5000));
 
       allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
     }

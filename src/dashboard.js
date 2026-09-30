@@ -1,4 +1,20 @@
-function auditDate(audit) {
+/** "26/09/2026, 14:32:10" ou "26/09/2026" → Date (hora local). */
+export function parseBRDateTime(text) {
+  const m = String(text || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+  return Number.isNaN(d.valueOf()) ? null : d;
+}
+
+/**
+ * Data da auditoria. Registros migrados do navegador antigo ganharam createdAt = dia da migração,
+ * então para eles vale a data original (processadoEm/data).
+ */
+export function auditDate(audit) {
+  if (audit?.migradoDoNavegador) {
+    const original = parseBRDateTime(audit.resultados?.processadoEm) || parseBRDateTime(audit.data);
+    if (original) return original;
+  }
   const source = audit.createdAt;
   if (source?.toDate) return source.toDate();
   if (source?.seconds) return new Date(source.seconds * 1000);
@@ -48,8 +64,13 @@ export function summarizeAudits(audits, { months = 6, userId = 'all', now = new 
     divergentValue += value;
     details.forEach((detail) => {
       if (detail.sentido === 'rep_maior' || detail.sentido === 'prod_maior') direction[detail.sentido] += 1;
+      // Agrupa sem acento (auditorias antigas guardaram o nome sem acento), exibindo a grafia com acento quando houver
       const name = detail.medico || 'Não informado';
-      doctors.set(name, (doctors.get(name) || 0) + (Number(detail.diferencaRaw) || 0));
+      const key = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+      const cur = doctors.get(key) || { name, value: 0 };
+      if (name !== key) cur.name = name;
+      cur.value += Number(detail.diferencaRaw) || 0;
+      doctors.set(key, cur);
     });
   });
 
@@ -64,6 +85,6 @@ export function summarizeAudits(audits, { months = 6, userId = 'all', now = new 
     },
     months: series,
     direction,
-    topDoctors: [...doctors.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5),
+    topDoctors: [...doctors.values()].map(({ name, value }) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5),
   };
 }

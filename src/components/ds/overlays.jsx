@@ -8,6 +8,10 @@ const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:n
 
 /** Focus management shared by every overlay: focus inside on open, Esc closes, Tab is trapped, focus returns on close. */
 function useDialogFocus(open, onClose, ref, autoFocus = true) {
+  // Sempre a versão atual de onClose: o efeito abaixo só roda ao abrir, e sem o ref o Esc chamaria
+  // o onClose da abertura (ex.: fechava o modal mesmo com "salvando…" ativo, escondendo o erro).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement;
@@ -15,7 +19,7 @@ function useDialogFocus(open, onClose, ref, autoFocus = true) {
     const first = node && (node.querySelector('[data-autofocus]') || node.querySelector(FOCUSABLE));
     if (first && autoFocus) first.focus({ preventScroll: true });
     function onKey(e) {
-      if (e.key === 'Escape' && onClose) { e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape' && closeRef.current) { e.stopPropagation(); closeRef.current(); }
       if (e.key === 'Tab' && node) {
         const items = Array.from(node.querySelectorAll(FOCUSABLE));
         if (!items.length) return;

@@ -30,7 +30,7 @@ const status = params.get('status') || 'ready';
 const later = (v, ms = 400) => new Promise((r) => setTimeout(() => r(v), ms));
 const fakeAuth = {
   listarUsuarios: () => (params.get('status') === 'error' ? Promise.reject({ code: 'unavailable' }) : later(USER_LIST, status === 'loading' ? 1e9 : 50)),
-  criarUsuario: () => later(true), atualizarUsuario: () => later(true), definirUsuarioDesativado: () => later(true),
+  criarUsuario: () => later({ uid: 'novo', emailEnviado: true }), atualizarUsuario: () => later(true), definirUsuarioDesativado: () => later(true),
   enviarResetDeSenha: () => later(true), atualizarFotoPerfil: () => later(true), alterarPropriaSenha: () => later(true),
   mensagemDeErro: () => 'Firestore indisponível. Verifique se o banco de dados foi criado no Console.',
 };
