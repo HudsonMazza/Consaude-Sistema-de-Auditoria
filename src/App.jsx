@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { firebaseReady, auth } from "./firebase";
 import { observarSessao, logout } from "./auth";
-import { observarHistorico, salvarAuditoria, salvarRelatorioIA, salvarStatuses, excluirAuditoria, migrarHistoricoLocal } from "./audits";
+import { observarHistorico, salvarAuditoria, salvarArquivosAuditoria, salvarRelatorioIA, salvarStatuses, excluirAuditoria, migrarHistoricoLocal } from "./audits";
 import {
   parseExcel, extractReferencia, detectColumns, originalNames, rowsWithoutName, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
   sheetHeaders, mergeColumns, excluirPix,
@@ -375,6 +375,16 @@ export default function App() {
       try {
         auditId = await salvarAuditoria(entry, currentUser);
         if (auditId === null) setHistWarning("Auditoria muito grande para salvar no histórico compartilhado — disponível apenas nesta sessão.");
+        else {
+          // Guarda os arquivos originais enviados (file1/file2 são os File do usuário, não as linhas filtradas por PIX)
+          const { falhas } = await salvarArquivosAuditoria(auditId, { prod: file1, rep: file2 }, currentUser);
+          if (falhas.length) {
+            const nomes = falhas.map((f) => (f.chave === "prod" ? "Produção" : "Repasse")).join(" e ");
+            setHistWarning(falhas.every((f) => f.motivo === "tamanho")
+              ? `A auditoria foi salva, mas o arquivo de ${nomes} é grande demais para ficar guardado nela (limite de 8 MB por arquivo).`
+              : `A auditoria foi salva, mas não foi possível guardar o arquivo de ${nomes}. Ele não estará disponível para download nesta auditoria.`);
+          }
+        }
       } catch {
         setHistWarning("Não foi possível salvar no histórico compartilhado. O resultado continua disponível nesta sessão.");
       }
