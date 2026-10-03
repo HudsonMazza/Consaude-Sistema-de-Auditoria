@@ -274,8 +274,8 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
             <Dropzone key={num} step={num} title={title} subtitle={subtitle} invalid={Boolean(err?.length)}
               reading={Boolean(file) && rows == null && !err?.length}
               file={file ? { name: file.name, size: file.size, rows: rows != null && rows >= 0 ? rows : null } : null}
-              onFile={(f) => handleFileSelect(f, setFile)}
-              onReplace={(f) => handleFileSelect(f, setFile)}
+              onFile={(f) => handleFileSelect(f, setFile, key)}
+              onReplace={(f) => handleFileSelect(f, setFile, key)}
               onRemove={() => setFile(null)}>
               <FileErrors errors={err} />
               {file && heads.length > 0 && chooseColumn && (
@@ -323,7 +323,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
             );
           })}
         </ol>
-        <Callout tone="info" title="Formatos aceitos">.xlsx, .xls ou .csv com colunas de médico, paciente e valor. A primeira linha deve ser o cabeçalho. Limite de 50 MB por arquivo.</Callout>
+        <Callout tone="info" title="Formatos aceitos">.xlsx, .xls ou .csv com colunas de médico, paciente e valor. A primeira linha deve ser o cabeçalho. Limite de 20 MB por arquivo.</Callout>
       </Card>
       <div className="cs-span-12">
         <ActionBar icon={hasFileErrors ? 'circle-alert' : canStart ? 'circle-check' : 'info'}

@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/ai-analysis.js": { "maxDuration": 60 }
+    "api/ai-analysis.js": { "maxDuration": 60 },
+    "api/files/*.js": { "maxDuration": 30 }
   }
 }

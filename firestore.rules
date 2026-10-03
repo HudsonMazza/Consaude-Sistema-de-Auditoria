@@ -127,6 +127,23 @@ service cloud.firestore {
         && request.resource.data.dados is string
         && request.resource.data.dados.size() <= 700000;
       allow update: if false;
+    // Metadados dos arquivos no bucket privado R2. O conteúdo nunca passa pelo
+    // Firestore: só a API autenticada gera URLs assinadas para o R2.
+    match /files/{fileId} {
+      allow read: if ativo() && (admin() || resource.data.userId == request.auth.uid);
+      allow create: if ativo()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.r2Key is string
+        && request.resource.data.originalName is string
+        && request.resource.data.contentType is string
+        && request.resource.data.sizeBytes is int
+        && request.resource.data.status == 'pending';
+      allow update: if ativo()
+        && (admin() || resource.data.userId == request.auth.uid)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'uploadedAt'])
+        && request.resource.data.status == 'uploaded';
+      allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
     }
 
     // Nenhuma outra coleção é acessível por padrão.
