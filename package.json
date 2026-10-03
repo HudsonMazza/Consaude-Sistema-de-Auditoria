@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:r2": "node --env-file=.env tests/r2.e2e.js"
+    "test:r2": "node --env-file=.env tests/r2.e2e.js",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.910.0",

@@ -1,5 +1,5 @@
-import { requireActiveUser, send } from "../lib/auth.js";
-import { listFiles } from "../lib/r2.js";
+import { requireActiveUser, send } from "../_lib/auth.js";
+import { listFiles } from "../_lib/r2.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") { res.setHeader("Allow", "GET"); return send(res, 405, { error: "Método não permitido." }); }

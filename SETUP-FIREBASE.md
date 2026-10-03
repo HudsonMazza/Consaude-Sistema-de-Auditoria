@@ -198,13 +198,13 @@ propósito — exclusão em massa a partir do navegador seria um risco maior.
 
 ## Arquivos originais de cada auditoria
 
-Ao rodar uma auditoria, os dois arquivos enviados (Produção e Repasse) ficam guardados
-sem alteração (sem o filtro de PIX) e aparecem para download em **Arquivos da auditoria**,
-no relatório. Como o plano Spark não inclui o Firebase Storage, o conteúdo vai para o
-próprio Firestore, nas subcoleções `audits/{id}/arquivos` (metadados + SHA-256) e
-`audits/{id}/arquivoPartes` (conteúdo em partes de ~700 KB). Limite: 8 MB por arquivo.
+Os dois arquivos enviados em cada auditoria ficam guardados no Cloudflare R2 (veja o
+[README](README.md#arquivos-de-auditoria-no-cloudflare-r2) para variáveis, CORS e testes). No
+Firestore ficam só os metadados, em `files/{auditId}_prod` e `files/{auditId}_rep`.
 
 ⚠️ **Republique o [`firestore.rules`](firestore.rules)** (Console → Firestore Database →
-Regras, ou `firebase deploy --only firestore:rules`). Sem as regras novas o Firestore
-recusa a gravação e o aviso "não foi possível guardar o arquivo" aparece após cada auditoria.
-Auditorias anteriores a este recurso não têm arquivos guardados.
+Regras, ou `firebase deploy --only firestore:rules`). Sem as regras novas o Firestore recusa os
+metadados e aparece o aviso "não foi possível guardar o arquivo" após cada auditoria.
+
+Auditorias que guardaram os arquivos direto no Firestore (`audits/{id}/arquivos`) continuam com
+download; nada novo é gravado ali.

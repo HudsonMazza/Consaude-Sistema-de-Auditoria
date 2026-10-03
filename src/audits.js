@@ -2,10 +2,11 @@ import {
   collection, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, onSnapshot,
   query, where, orderBy, serverTimestamp, Timestamp,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import {
-  ARQUIVO_MAX_BYTES, ARQUIVOS_AUDITORIA, bytesParaBase64, dividirEmPartes, juntarPartes, sha256Hex, baixarBytes,
+  ARQUIVO_MAX_BYTES, ARQUIVO_MAX_MB, ARQUIVOS_AUDITORIA, juntarPartes, sha256Hex, baixarBytes, baixarPorUrl,
 } from "./lib/auditFiles.js";
+import { enviarArquivoAuditoria, urlDeDownload, apagarArquivo } from "./lib/r2Upload.js";
 import { parseBRDateTime } from "./dashboard.js";
 
 /** O Firestore recusa campos `undefined`: remove-os (itens legados às vezes não têm todos os campos). */
@@ -88,64 +89,70 @@ export function salvarStatuses(auditId, statuses) {
 // ─── ARQUIVOS ORIGINAIS DA AUDITORIA ──────────────────────────────────────────
 //
 // Os dois arquivos enviados (Produção e Repasse) ficam guardados, byte a byte, junto da auditoria — sem filtro
-// de PIX nem qualquer outra alteração — para rastrear e reproduzir os resultados. Como o projeto está no plano
-// Spark (sem Firebase Storage), o conteúdo vai para o próprio Firestore:
-//   audits/{id}/arquivos/{prod|rep}        → metadados (nome, tipo, tamanho, SHA-256, nº de partes)
-//   audits/{id}/arquivoPartes/{chave}_{n}  → conteúdo em base64, em partes de ~700 KB
-// Os metadados são gravados por último: se existem, o arquivo está completo. Nunca são alterados depois.
+// de PIX nem qualquer outra alteração — para rastrear e reproduzir os resultados.
+//   • Novos: bucket privado Cloudflare R2, via /api/files/* (URLs assinadas de 5 min). Os metadados ficam em
+//     files/{auditId}_{prod|rep}, e só entram aqui depois que a API conferiu o objeto no bucket.
+//   • Antigos: cópias em base64 no Firestore (audits/{id}/arquivos + arquivoPartes), de antes da migração.
+//     Continuam disponíveis para download e são apagadas junto com a auditoria; nada novo é gravado nelas.
 
+const FILES_COL = "files";
 const ARQ_COL = "arquivos";
 const PARTES_COL = "arquivoPartes";
+const getIdToken = () => auth?.currentUser?.getIdToken();
+const fileDocId = (auditId, chave) => `${auditId}_${chave}`;
 
-async function apagarPartes(auditId, chave, quantidade) {
-  await Promise.allSettled(Array.from({ length: quantidade }, (_, i) => deleteDoc(doc(db, AUDITS_COL, auditId, PARTES_COL, `${chave}_${i}`))));
+/**
+ * Guarda os arquivos originais de uma auditoria já salva no R2. `arquivos` = { prod: File, rep: File }.
+ * Cada arquivo é independente e a função nunca lança: devolve { salvos: [chave], falhas: [{ chave, motivo, mensagem }] }
+ * (motivo: "tamanho" | "erro"). A auditoria já está salva; falha aqui só significa "sem arquivo para baixar".
+ */
+export async function salvarArquivosAuditoria(auditId, arquivos) {
+  const chaves = Object.keys(ARQUIVOS_AUDITORIA).filter((c) => arquivos?.[c]);
+  const resultados = await Promise.all(chaves.map(async (chave) => {
+    const file = arquivos[chave];
+    if (file.size > ARQUIVO_MAX_BYTES) return { chave, motivo: "tamanho", mensagem: `acima do limite de ${ARQUIVO_MAX_MB} MB` };
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await enviarArquivoAuditoria({ auditId, kind: chave, file, sha256: await sha256Hex(bytes), getIdToken });
+      return { chave, ok: true };
+    } catch (err) {
+      return err?.code === "too_large"
+        ? { chave, motivo: "tamanho", mensagem: err.message }
+        : { chave, motivo: "erro", mensagem: err?.message };
+    }
+  }));
+  return {
+    salvos: resultados.filter((r) => r.ok).map((r) => r.chave),
+    falhas: resultados.filter((r) => !r.ok),
+  };
 }
 
 /**
- * Guarda os arquivos originais de uma auditoria já salva. `arquivos` = { prod: File, rep: File }.
- * Cada arquivo é independente: devolve { salvos: [chave], falhas: [{ chave, motivo }] } (motivo: "tamanho" | "erro").
+ * Arquivos guardados na auditoria: { prod?: meta, rep?: meta } (só os que existem). Cada meta tem
+ * `origem` ("r2" | "firestore"), `nome`, `tamanho` e `tipo`. Prefere o R2; cai para a cópia antiga do Firestore.
+ * Lança em erro de rede/permissão.
  */
-export async function salvarArquivosAuditoria(auditId, arquivos, criadoPor) {
-  const salvos = [];
-  const falhas = [];
-  for (const chave of Object.keys(ARQUIVOS_AUDITORIA)) {
-    const file = arquivos?.[chave];
-    if (!file) continue;
-    if (file.size > ARQUIVO_MAX_BYTES) { falhas.push({ chave, motivo: "tamanho" }); continue; }
-    let partesGravadas = 0;
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const partes = dividirEmPartes(bytesParaBase64(bytes));
-      const sha256 = await sha256Hex(bytes);
-      for (let i = 0; i < partes.length; i++) {
-        await setDoc(doc(db, AUDITS_COL, auditId, PARTES_COL, `${chave}_${i}`), { userId: criadoPor.id, chave, indice: i, dados: partes[i] });
-        partesGravadas++;
-      }
-      await setDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave), semIndefinidos({
-        userId: criadoPor.id, chave, nome: file.name, tipo: file.type || "", tamanho: bytes.length,
-        partes: partes.length, sha256, criadoEm: serverTimestamp(),
-      }));
-      salvos.push(chave);
-    } catch {
-      await apagarPartes(auditId, chave, partesGravadas); // sem metadados o arquivo não aparece; não deixa partes órfãs
-      falhas.push({ chave, motivo: "erro" });
-    }
-  }
-  return { salvos, falhas };
-}
-
-/** Metadados dos arquivos guardados na auditoria: { prod?: {...}, rep?: {...} } (só os que existem). Lança em erro de rede/permissão. */
 export async function listarArquivosAuditoria(auditId) {
   const out = {};
   await Promise.all(Object.keys(ARQUIVOS_AUDITORIA).map(async (chave) => {
-    const snap = await getDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave));
-    if (snap.exists()) out[chave] = snap.data();
+    const r2 = await getDoc(doc(db, FILES_COL, fileDocId(auditId, chave)));
+    if (r2.exists() && r2.data().status === "uploaded") {
+      const d = r2.data();
+      out[chave] = { origem: "r2", fileId: r2.id, nome: d.originalName, tamanho: d.sizeBytes, tipo: d.contentType };
+      return;
+    }
+    const antigo = await getDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave));
+    if (antigo.exists()) out[chave] = { origem: "firestore", ...antigo.data() };
   }));
   return out;
 }
 
-/** Baixa um dos arquivos originais, com o nome original, conferindo o SHA-256 gravado no envio. */
+/** Baixa um dos arquivos originais, com o nome original. Cópias antigas do Firestore têm o SHA-256 conferido. */
 export async function baixarArquivoAuditoria(auditId, chave, meta) {
+  if (meta.origem === "r2") {
+    baixarPorUrl(await urlDeDownload(meta.fileId, getIdToken));
+    return;
+  }
   const partes = await Promise.all(Array.from({ length: meta.partes }, async (_, i) => {
     const snap = await getDoc(doc(db, AUDITS_COL, auditId, PARTES_COL, `${chave}_${i}`));
     if (!snap.exists()) throw new Error("Arquivo incompleto.");
@@ -160,13 +167,22 @@ export async function baixarArquivoAuditoria(auditId, chave, meta) {
   baixarBytes(bytes, meta.nome, meta.tipo);
 }
 
-/** Exclui a auditoria junto com os arquivos guardados (o Firestore não apaga subcoleções sozinho). */
+/**
+ * Exclui a auditoria junto com os arquivos guardados (o Firestore não apaga subcoleções sozinho e o R2 não
+ * tem vínculo com o documento). Se algum arquivo não puder ser apagado, lança e a auditoria é mantida,
+ * para tentar de novo em vez de deixar arquivo órfão no bucket.
+ */
 export async function excluirAuditoria(auditId) {
   for (const chave of Object.keys(ARQUIVOS_AUDITORIA)) {
+    // Só chama a API se existir metadados: sem arquivo guardado (ou sem R2 configurado) a exclusão segue normal.
+    const r2 = await getDoc(doc(db, FILES_COL, fileDocId(auditId, chave)));
+    if (r2.exists()) await apagarArquivo(r2.id, getIdToken);
+
     const metaRef = doc(db, AUDITS_COL, auditId, ARQ_COL, chave);
     const snap = await getDoc(metaRef);
     if (!snap.exists()) continue;
-    await apagarPartes(auditId, chave, snap.data().partes || 0);
+    const partes = snap.data().partes || 0;
+    await Promise.allSettled(Array.from({ length: partes }, (_, i) => deleteDoc(doc(db, AUDITS_COL, auditId, PARTES_COL, `${chave}_${i}`))));
     await deleteDoc(metaRef);
   }
   return deleteDoc(doc(db, AUDITS_COL, auditId));

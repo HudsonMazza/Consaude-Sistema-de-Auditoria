@@ -10,6 +10,14 @@ export function send(res, status, body) {
   res.status(status).send(JSON.stringify(body));
 }
 
+/** Corpo JSON da requisição; `null` se estiver malformado (o handler responde 400). */
+export function readBody(req) {
+  try {
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    return body && typeof body === "object" && !Array.isArray(body) ? body : null;
+  } catch { return null; }
+}
+
 /** Verifica o Firebase ID token. Nunca confie em um userId enviado pelo cliente. */
 export async function requireUser(req, res) {
   const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
@@ -30,6 +38,7 @@ export async function requireUser(req, res) {
   }
 }
 
+/** Usuário autenticado, com perfil existente e ativo. Devolve também o `role` do perfil (admin/user). */
 export async function requireActiveUser(req, res) {
   const user = await requireUser(req, res);
   if (!user) return null;
@@ -39,7 +48,7 @@ export async function requireActiveUser(req, res) {
     if (!profile.ok) throw new Error("profile-not-found");
     const data = await profile.json();
     if (data?.fields?.disabled?.booleanValue === true) throw new Error("disabled");
-    return user;
+    return { ...user, role: data?.fields?.role?.stringValue === "admin" ? "admin" : "user" };
   } catch {
     send(res, 403, { error: "Sua conta não tem acesso aos arquivos." });
     return null;

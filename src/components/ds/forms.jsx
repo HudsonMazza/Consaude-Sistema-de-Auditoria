@@ -289,7 +289,7 @@ const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ','
  * file: { name, size, rows, columns: ['Médico', …] | [{ label, ok }] }. error: message. onFile(file), onRemove(), onReplace(file).
  * children render under the zone (validation callouts). accept defaults to .xlsx,.xls,.csv.
  */
-export function Dropzone({ step, title, subtitle, state: stateProp, file, error, invalid = false, reading = false, onFile, onRemove, onReplace, accept = '.xlsx,.xls,.csv', hint = '.xlsx, .xls ou .csv · até 20 MB', children }) {
+export function Dropzone({ step, title, subtitle, state: stateProp, file, error, invalid = false, reading = false, onFile, onRemove, onReplace, accept = '.xlsx,.xls,.csv', hint = '.xlsx, .xls ou .csv · até 50 MB', children }) {
   const [drag, setDrag] = useState(false);
   const inputId = useId();
   const replaceRef = useRef(null);

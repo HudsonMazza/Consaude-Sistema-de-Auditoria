@@ -104,43 +104,44 @@ service cloud.firestore {
       allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
     }
 
-    // Arquivos originais de cada auditoria (Produção e Repasse), guardados sem alteração para rastreabilidade.
-    // Cada documento carrega o userId de quem enviou, então a regra não precisa ler a auditoria. São imutáveis:
-    // só podem ser criados (na hora da auditoria) e apagados (junto com a auditoria) — nunca editados.
+    // Cópias antigas dos arquivos, guardadas no próprio Firestore antes da migração para o R2. Só leitura e
+    // exclusão (ao apagar a auditoria): nada novo é gravado aqui.
+    //
+    // `resource == null` deixa ler um documento que não existe (o app consulta "esta auditoria tem arquivo?");
+    // sem isso, `resource.data` falha e o Firestore devolve permission-denied para quem não é admin.
     match /audits/{auditId}/arquivos/{chave} {
-      allow read, delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
-      allow create: if ativo()
-        && (admin() || request.resource.data.userId == request.auth.uid)
-        && (chave == 'prod' || chave == 'rep')
-        && request.resource.data.chave == chave
-        && request.resource.data.nome is string
-        && request.resource.data.tamanho is number
-        && request.resource.data.partes is number
-        && request.resource.data.partes >= 1 && request.resource.data.partes <= 20;
-      allow update: if false;
+      allow read: if ativo() && (resource == null || admin() || resource.data.userId == request.auth.uid);
+      allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
     }
 
     match /audits/{auditId}/arquivoPartes/{parteId} {
-      allow read, delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
-      allow create: if ativo()
-        && (admin() || request.resource.data.userId == request.auth.uid)
-        && request.resource.data.dados is string
-        && request.resource.data.dados.size() <= 700000;
-      allow update: if false;
-    // Metadados dos arquivos no bucket privado R2. O conteúdo nunca passa pelo
-    // Firestore: só a API autenticada gera URLs assinadas para o R2.
+      allow read: if ativo() && (resource == null || admin() || resource.data.userId == request.auth.uid);
+      allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
+    }
+
+    // Metadados dos arquivos originais de cada auditoria (Produção e Repasse), guardados no bucket privado R2.
+    // O conteúdo nunca passa pelo Firestore: só a API autenticada gera URLs assinadas. Um documento por auditoria
+    // e tipo (`{auditId}_prod` / `{auditId}_rep`). A chave do objeto precisa começar com o uid do dono, para que
+    // ninguém aponte o documento para o arquivo de outra pessoa.
     match /files/{fileId} {
-      allow read: if ativo() && (admin() || resource.data.userId == request.auth.uid);
+      allow read: if ativo() && (resource == null || admin() || resource.data.userId == request.auth.uid);
       allow create: if ativo()
         && request.resource.data.userId == request.auth.uid
+        && request.resource.data.auditId is string
+        && request.resource.data.kind in ['prod', 'rep']
+        && fileId == request.resource.data.auditId + '_' + request.resource.data.kind
         && request.resource.data.r2Key is string
+        && request.resource.data.r2Key.matches(request.auth.uid + '/[^.].*')
+        && !request.resource.data.r2Key.matches('.*[.][.].*')
         && request.resource.data.originalName is string
         && request.resource.data.contentType is string
         && request.resource.data.sizeBytes is int
+        && request.resource.data.sizeBytes > 0
         && request.resource.data.status == 'pending';
+      // Só o dono confirma o envio ('pending' → 'uploaded'); nenhum outro campo muda.
       allow update: if ativo()
-        && (admin() || resource.data.userId == request.auth.uid)
-        && request.resource.data.userId == resource.data.userId
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'pending'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'uploadedAt'])
         && request.resource.data.status == 'uploaded';
       allow delete: if ativo() && (admin() || resource.data.userId == request.auth.uid);
