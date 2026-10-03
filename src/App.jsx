@@ -25,6 +25,7 @@ const exportExcel = (...a) => import("./lib/exporters.js").then((m) => m.exportE
 const exportPDF   = (...a) => import("./lib/exporters.js").then((m) => m.exportPDF(...a));
 const generateAIReport = (...a) => import("./lib/aiReport.js").then((m) => m.generateAIReport(...a));
 import { openReport } from "./lib/reportViewer.js";
+import { uploadSpreadsheet } from "./lib/r2Upload.js";
 import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
 import { AiProgressModal, Modal, Button, Card, Skeleton } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
@@ -66,6 +67,7 @@ export default function App() {
   const [auditView,     setAuditView]     = useState("list");
   const [file1,         setFile1]         = useState(null);
   const [file2,         setFile2]         = useState(null);
+  const [r2FileIds,     setR2FileIds]     = useState({ prod: null, rep: null });
   const [processing,    setProcessing]    = useState(false);
   const [progress,      setProgress]      = useState(0);
   const [steps,         setSteps]         = useState([false,false,false,false,false,false]);
@@ -180,6 +182,7 @@ export default function App() {
     setHistorico([]);
     setFile1(null);
     setFile2(null);
+    setR2FileIds({ prod: null, rep: null });
     // Nada da sessão anterior passa para o próximo usuário desta aba
     statusesDirty.current = false;
     setStatuses({});
@@ -360,6 +363,7 @@ export default function App() {
         referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || extractReferencia(repRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
         file1Name:    file1.name,
         file2Name:    file2.name,
+        r2FileIds,
         tolerancia:   threshold,
         ...(semProd.linhas || semRep.linhas ? { linhasSemMedico: { prod: semProd, rep: semRep } } : {}),
       };
@@ -402,7 +406,7 @@ export default function App() {
 
   const VALID_EXT = ["xlsx", "xls", "csv"];
 
-  const handleFileSelect = (file, setter) => {
+  const handleFileSelect = async (file, setter, key) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
     if (!VALID_EXT.includes(ext)) {
@@ -410,12 +414,20 @@ export default function App() {
       setUploadError((prev) => ({ ...prev, geral: `Formato inválido: ".${ext}". Use .xlsx, .xls ou .csv.` }));
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError((prev) => ({ ...prev, geral: "Arquivo muito grande. Limite de 50 MB por arquivo." }));
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError((prev) => ({ ...prev, geral: "Arquivo muito grande. Limite de 20 MB por arquivo." }));
       return;
     }
-    setUploadError((prev) => (prev?.geral ? { ...prev, geral: undefined } : prev));
-    setter(file);
+    try {
+      // O conteúdo vai direto para o bucket privado via URL curta assinada; a
+      // planilha selecionada continua local para a prévia e processamento atual.
+      const id = await uploadSpreadsheet(file, () => auth?.currentUser?.getIdToken());
+      setR2FileIds((ids) => ({ ...ids, [key]: id }));
+      setUploadError((prev) => (prev?.geral ? { ...prev, geral: undefined } : prev));
+      setter(file);
+    } catch (err) {
+      setUploadError((prev) => ({ ...prev, geral: err?.message || "Não foi possível enviar o arquivo. Tente novamente." }));
+    }
   };
 
   const handleGenerateAIReport = async () => {
@@ -463,6 +475,7 @@ export default function App() {
     setPeriodoAuditoria('');
     setFile1(null);
     setFile2(null);
+    setR2FileIds({ prod: null, rep: null });
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
     flushStatuses();
