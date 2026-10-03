@@ -18,7 +18,7 @@ import { observarSessao, logout } from "./auth";
 import { observarHistorico, salvarAuditoria, salvarRelatorioIA, salvarStatuses, excluirAuditoria, migrarHistoricoLocal } from "./audits";
 import {
   parseExcel, extractReferencia, detectColumns, originalNames, rowsWithoutName, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
-  sheetHeaders, mergeColumns,
+  sheetHeaders, mergeColumns, excluirPix,
 } from "./lib/engine.js";
 // Exportações e relatório IA carregam sob demanda (as funções já eram assíncronas).
 const exportExcel = (...a) => import("./lib/exporters.js").then((m) => m.exportExcel(...a));
@@ -268,14 +268,19 @@ export default function App() {
     try {
       // Etapa 1: Leitura dos arquivos (reaproveitando cache do preview quando disponível)
       step(0, 16);
-      const [prodRows, repRows] = await Promise.all([readRows("prod", file1), readRows("rep", file2)]);
+      const [prodTodas, repTodas] = await Promise.all([readRows("prod", file1), readRows("rep", file2)]);
+      // Regra de negócio: registros pagos via PIX ficam fora de toda a análise (cruzamento, divergências, relatório).
+      // Filtra antes de detectar colunas/validar; as linhas lidas (e o cache da leitura) continuam intactas.
+      const prodRows = excluirPix(prodTodas);
+      const repRows  = excluirPix(repTodas);
 
       // Etapa 2: Identificação das colunas
       // Colunas detectadas, com as escolhidas em "Ajustar colunas" por cima
       const pCols = mergeColumns(detectColumns(prodRows), colMap.prod);
       const rCols = mergeColumns(detectColumns(repRows), colMap.rep);
-      const prodErrors = validateFile(prodRows, pCols);
-      const repErrors  = validateFile(repRows, rCols);
+      const SO_PIX = "Todas as linhas desta planilha são pagas via PIX e ficam fora da análise. Envie um arquivo com outras formas de pagamento.";
+      const prodErrors = prodRows.length === 0 && prodTodas.length > 0 ? [SO_PIX] : validateFile(prodRows, pCols);
+      const repErrors  = repRows.length === 0 && repTodas.length > 0 ? [SO_PIX] : validateFile(repRows, rCols);
       step(1, 32);
 
       if (prodErrors.length || repErrors.length) {
