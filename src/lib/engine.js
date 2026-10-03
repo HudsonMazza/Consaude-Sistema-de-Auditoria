@@ -143,6 +143,31 @@ export async function parseExcel(file) {
   });
 }
 
+// ─── ENGINE: FORMA DE PAGAMENTO ───────────────────────────────────────────────
+
+const COL_FORMA_PAG = /^forma(\s+de)?\s+(pagamento|pagto|pgto)\b/;
+
+/** Coluna "Forma de Pagamento" da planilha (ignora caixa, acento e espaços extras no cabeçalho), ou null se não existir. */
+export function findFormaPagamentoCol(rows) {
+  if (!rows || !rows.length) return null;
+  return Object.keys(rows[0]).find((c) => COL_FORMA_PAG.test(normalizeCol(c).replace(/\s+/g, " "))) ?? null;
+}
+
+/** true se a forma de pagamento da célula é PIX (qualquer caixa, com espaços ou espaço não separável ao redor). */
+export function isPix(v) {
+  return String(v ?? "").replace(/[\s\u00a0]+/g, " ").trim().toUpperCase() === "PIX";
+}
+
+/**
+ * Remove da análise as linhas pagas via PIX, usando a coluna "Forma de Pagamento".
+ * Devolve um array novo (as linhas originais não são alteradas nem perdem a coluna). Sem a coluna, nada é removido.
+ */
+export function excluirPix(rows) {
+  const col = findFormaPagamentoCol(rows);
+  if (!col) return rows;
+  return rows.filter((r) => !isPix(r[col]));
+}
+
 // ─── ENGINE: COLUMN DETECTION ─────────────────────────────────────────────────
 
 // ─── REFERÊNCIA (mês/ano) ─────────────────────────────────────────────────────

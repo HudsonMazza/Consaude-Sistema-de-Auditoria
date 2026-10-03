@@ -9,6 +9,7 @@ import {
 } from '../components/ds/index.js';
 import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
 import { useToast } from '../components/Toaster.jsx';
+import AuditFilesCard from '../components/AuditFilesCard.jsx';
 
 const COPY_FAIL = { tone: 'error', title: 'Não foi possível copiar', text: 'O navegador bloqueou a área de transferência. Selecione o texto e copie manualmente.' };
 
@@ -306,6 +307,8 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
           </ul>
         )}
       </Card>
+
+      {resultados._histId && <AuditFilesCard auditId={resultados._histId} />}
 
       {selectedMedico && (
         <DoctorDrawer medico={selectedMedico} status={getStatus(selectedMedico.id)} onStatus={(next) => setStatus(selectedMedico, next)}
