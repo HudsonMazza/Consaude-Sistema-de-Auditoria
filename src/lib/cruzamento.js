@@ -340,6 +340,7 @@ function prepCaixa(rows, c) {
       data: toDataStr(r[c.dataCol]),
       paciente: normalizeName(r[c.pacienteCol]),
       executante: normalizeName(r[c.executanteCol]),
+      executanteRaw: String(r[c.executanteCol] ?? "").replace(/s+/g, " ").trim(),
       editor: normalizeName(r[c.atendenteCol]),
       editorRaw: String(r[c.atendenteCol] ?? "").replace(/\s+/g, " ").trim(),
       procs: parseProcsCaixa(r[c.procCol]),
@@ -617,17 +618,27 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     const conv = semAcento(r[cP.forma]) || semAcento(r[cP.convenio]);
     const k = conv + "|" + guia;
     let g = guiasMap.get(k);
-    if (!g) { g = { convenio: String(r[cP.forma] ?? r[cP.convenio] ?? "").trim(), guia, pacientes: new Set(), paciente: String(r[cP.paciente] ?? "").trim(), porCodigo: new Map() }; guiasMap.set(k, g); }
-    g.pacientes.add(normalizeName(r[cP.paciente]));
+    if (!g) { g = { convenio: String(r[cP.forma] ?? r[cP.convenio] ?? "").trim(), guia, pacientes: new Set(), nomes: new Map(), paciente: String(r[cP.paciente] ?? "").trim(), porCodigo: new Map() }; guiasMap.set(k, g); }
+    const pn = normalizeName(r[cP.paciente]);
+    g.pacientes.add(pn);
+    if (pn && !g.nomes.has(pn)) g.nomes.set(pn, String(r[cP.paciente] ?? "").trim());
     const codigo = String(r[cP.codigo] ?? "").trim();
     const c = g.porCodigo.get(codigo) || { codigo, data: toDataStr(r[cP.data]), medico: String(r[cP.executante] || r[cP.profissional] || "").trim(), enviado: false };
     if (normalizeName(r[cP.quemEnviou])) c.enviado = true;
     g.porCodigo.set(codigo, c);
   }
   const multiDia = [];
+  const repetidas = [];
   let suspeitasNumeracao = 0;
   for (const g of guiasMap.values()) {
     const cods = [...g.porCodigo.values()];
+    // Mesmo número de guia no mesmo convênio para pacientes diferentes: provável erro de digitação no cadastro.
+    if (g.pacientes.size > 1) {
+      repetidas.push({
+        convenio: g.convenio, guia: g.guia, nPacientes: g.pacientes.size, pacientes: [...g.nomes.values()].slice(0, 6),
+        datas: [...new Set(cods.map((c) => c.data))].sort((a, b) => dataToTime(a) - dataToTime(b)).slice(0, 6), nAtendimentos: cods.length,
+      });
+    }
     if (new Set(cods.map((c) => c.data)).size < 2) continue;
     if (g.pacientes.size > 1) { suspeitasNumeracao++; continue; }
     const atendimentos = cods.sort((a, b) => dataToTime(a.data) - dataToTime(b.data)).map((c) => ({ ...c, ...lancadoPor(c.codigo) }));
@@ -640,6 +651,20 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
   }
   const ordemEnvio = { parcial: 0, nenhum: 1, total: 2 };
   multiDia.sort((a, b) => ordemEnvio[a.envio] - ordemEnvio[b.envio] || b.nLancadores - a.nLancadores);
+
+  // 5b) Faltas e cancelamentos por médico (executante do Caixa).
+  const faltasMed = new Map();
+  for (const r of C) {
+    if (!r.executante) continue;
+    const o = faltasMed.get(r.executante) || { nome: r.executanteRaw || r.executante, lancamentos: 0, faltas: 0, cancelamentos: 0 };
+    o.lancamentos++;
+    if (r.status === "FALTOU") o.faltas++;
+    if (r.status === "CANCELOU") o.cancelamentos++;
+    faltasMed.set(r.executante, o);
+  }
+  const porMedicoFaltas = [...faltasMed.values()].filter((o) => o.faltas + o.cancelamentos > 0)
+    .map((o) => ({ ...o, taxa: r2(((o.faltas + o.cancelamentos) / o.lancamentos) * 100) }))
+    .sort((a, b) => (b.faltas + b.cancelamentos) - (a.faltas + a.cancelamentos) || b.taxa - a.taxa);
 
   // 6) Ranking de quem lançou. Atendimento ambíguo divide o peso entre as pessoas (1/n).
   const rk = new Map();
@@ -724,6 +749,16 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
       suspeitasNumeracao,
       itens: multiDia.slice(0, 200),
     },
+    guiasRepetidas: {
+      total: repetidas.length,
+      itens: repetidas.sort((a, b) => b.nPacientes - a.nPacientes || b.nAtendimentos - a.nAtendimentos).slice(0, 100),
+    },
+    faltas: comCaixa ? {
+      lancamentos: C.length,
+      faltas: C.filter((r) => r.status === "FALTOU").length,
+      cancelamentos: C.filter((r) => r.status === "CANCELOU").length,
+      porMedico: porMedicoFaltas.slice(0, 80),
+    } : null,
     ranking,
     caixa: comCaixa ? {
       linhas: C.length,
@@ -755,5 +790,104 @@ export function insightsCruzamento(cz) {
     if (top) out.push(`Quem mais lançou guias não enviadas: ${titulo(top.nome)}, com ${qtd(top.guiasNaoEnviadas)} (${brl(top.valorGuias)})${top.taxaGuias != null ? `, ${top.taxaGuias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% das guias que lançou` : ""}.`);
   }
   if (cz.guiasMultiDia?.comEnvioIncompleto) out.push(`${n(cz.guiasMultiDia.comEnvioIncompleto)} ${cz.guiasMultiDia.comEnvioIncompleto === 1 ? "guia usada" : "guias usadas"} em mais de um dia ${cz.guiasMultiDia.comEnvioIncompleto === 1 ? "tem" : "têm"} algum atendimento sem envio.`);
+  const eq = analiseEquipe(cz);
+  if (eq) {
+    const pct = (x) => `${x.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+    const t = eq.taxa;
+    if (t.geral != null && t.acimaDoPadrao.length) {
+      out.push(`Taxa de guias sem envio da equipe: ${pct(t.geral)}${t.faixaRecepcao ? ` (recepção entre ${pct(t.faixaRecepcao.min)} e ${pct(t.faixaRecepcao.max)})` : ""}. ${t.acimaDoPadrao.length === 1 ? "1 pessoa passa" : `${t.acimaDoPadrao.length} pessoas passam`} de ${pct(t.limiteAlto)}: vale treinar.`);
+    }
+    if (eq.profissionais.guias >= 1) out.push(`Profissionais que lançam o próprio atendimento deixaram ${n(eq.profissionais.guias)} guias sem envio (${brl(eq.profissionais.valor)}).`);
+    if (eq.guiasRepetidas.total) out.push(`${n(eq.guiasRepetidas.total)} ${eq.guiasRepetidas.total === 1 ? "número de guia aparece" : "números de guia aparecem"} em pacientes diferentes no mesmo convênio: pode ser erro de digitação no cadastro.`);
+    if (eq.faltas.faltas + eq.faltas.cancelamentos) out.push(`${n(eq.faltas.faltas)} faltas e ${n(eq.faltas.cancelamentos)} cancelamentos lançados no Fechamento de Caixa (${pct(eq.faltas.taxa)} dos lançamentos).`);
+  }
   return out;
+}
+
+// ─── Equipe e pontos cegos (derivado do cruzamento salvo) ─────────────────────
+
+/** Quantil por interpolação linear de uma lista já ordenada. */
+function quantil(xs, p) {
+  if (!xs.length) return null;
+  const i = (xs.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+  return r2(xs[lo] + (xs[hi] - xs[lo]) * (i - lo));
+}
+
+/**
+ * Métricas de equipe e pontos cegos do processo, calculadas a partir do `cruzamento` salvo — também em auditorias
+ * gravadas antes destes campos (aí `guiasRepetidas.itens` e `faltas.porMedico` vêm vazios).
+ *   taxa: guias de convênio sem envio ÷ guias de convênio que a pessoa lançou. Só entra quem lançou ≥ minGuias,
+ *   para não punir quem lançou pouco (uma guia em duas vira 50%).
+ * Usado pela tela, pelas exportações e pelo relatório IA (que recebe só números, sem nomes).
+ * Devolve null quando a auditoria não teve o Fechamento de Caixa.
+ */
+export function analiseEquipe(cz, { minGuias = 10, minGuiasFaixa = 20 } = {}) {
+  if (!cz?.comCaixa) return null;
+  const rk = Array.isArray(cz.ranking) ? cz.ranking : [];
+  const soma = (xs, k) => xs.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+
+  // 1) Taxa por pessoa.
+  const guiasLancadas = soma(rk, "guiasLancadas");
+  const guiasNaoEnviadas = soma(rk, "guiasNaoEnviadas");
+  const taxaGeral = guiasLancadas >= 1 ? r2((guiasNaoEnviadas / guiasLancadas) * 100) : null;
+  const atend = rk.filter((r) => r.tipo === "atendente" && r.taxaGuias != null && r.guiasLancadas >= minGuiasFaixa)
+    .map((r) => r.taxaGuias).sort((a, b) => a - b);
+  // Faixa típica da recepção: quartis (meio da distribuição) com 4+ atendentes; senão, do menor ao maior.
+  const faixaRecepcao = atend.length >= 4 ? { min: quantil(atend, 0.25), max: quantil(atend, 0.75), n: atend.length }
+    : atend.length ? { min: atend[0], max: atend[atend.length - 1], n: atend.length } : null;
+  const mediana = atend.length ? quantil(atend, 0.5) : taxaGeral;
+  // "Acima do padrão": bem acima do meio da recepção — nunca abaixo de 30%.
+  const limiteAlto = r2(Math.max(30, (mediana ?? 0) * 2, (faixaRecepcao?.max ?? 0) + 15));
+  const comBase = rk.filter((r) => r.taxaGuias != null && r.guiasLancadas >= minGuias);
+  const enxuto = (r) => ({ nome: r.nome, tipo: r.tipo, ...(r.faturamento ? { faturamento: true } : {}), lancamentos: r.lancamentos,
+    guiasLancadas: r.guiasLancadas, guiasNaoEnviadas: r.guiasNaoEnviadas, valorGuias: r.valorGuias, taxa: r.taxaGuias });
+  const acimaDoPadrao = comBase.filter((r) => r.taxaGuias >= limiteAlto)
+    .sort((a, b) => b.taxaGuias - a.taxaGuias || b.guiasNaoEnviadas - a.guiasNaoEnviadas).map(enxuto);
+  const referencia = Math.min(taxaGeral ?? 0, faixaRecepcao?.min ?? Infinity);
+  const fazemCerto = rk.filter((r) => r.taxaGuias != null && r.guiasLancadas >= minGuiasFaixa && r.taxaGuias <= referencia)
+    .sort((a, b) => a.taxaGuias - b.taxaGuias || b.guiasLancadas - a.guiasLancadas).slice(0, 5).map(enxuto);
+  const porTaxa = comBase.slice().sort((a, b) => b.taxaGuias - a.taxaGuias || b.guiasNaoEnviadas - a.guiasNaoEnviadas).map(enxuto);
+
+  // 2) Profissionais que lançam o próprio atendimento e não mandam a guia.
+  const profs = rk.filter((r) => r.tipo === "profissional" && r.guiasNaoEnviadas >= 1)
+    .sort((a, b) => b.guiasNaoEnviadas - a.guiasNaoEnviadas || b.valorGuias - a.valorGuias);
+  const profissionais = { pessoas: profs.length, guias: r2(soma(profs, "guiasNaoEnviadas")), valor: r2(soma(profs, "valorGuias")),
+    parteDoTotal: guiasNaoEnviadas ? r2((soma(profs, "guiasNaoEnviadas") / guiasNaoEnviadas) * 100) : 0, itens: profs.slice(0, 8).map(enxuto) };
+
+  // 3) Guias de várias sessões lançadas por pessoas diferentes.
+  const md = cz.guiasMultiDia || {};
+  const multiItens = Array.isArray(md.itens) ? md.itens : [];
+  const multiSessao = {
+    total: Number(md.total) || 0,
+    comLancadoresDiferentes: Number(md.comLancadoresDiferentes) || 0,
+    comEnvioIncompleto: Number(md.comEnvioIncompleto) || 0,
+    // As duas coisas juntas: a parte sem envio é fácil de perder quando cada sessão foi lançada por alguém.
+    diferentesEIncompletas: multiItens.filter((g) => g.nLancadores > 1 && g.envio !== "total").length,
+  };
+
+  // 4) Números de guia repetidos entre pacientes.
+  const gr = cz.guiasRepetidas;
+  const guiasRepetidas = gr ? { total: Number(gr.total) || 0, itens: gr.itens || [], completo: true }
+    : { total: Number(md.suspeitasNumeracao) || 0, itens: [], completo: false };
+
+  // 5) Faltas e cancelamentos por pessoa e por médico.
+  const fz = cz.faltas;
+  const totLanc = fz?.lancamentos ?? soma(rk, "lancamentos");
+  const faltas = fz?.faltas ?? soma(rk, "faltas");
+  const cancelamentos = fz?.cancelamentos ?? soma(rk, "cancelamentos");
+  const porPessoa = rk.filter((r) => r.faltas + r.cancelamentos > 0)
+    .map((r) => ({ nome: r.nome, tipo: r.tipo, lancamentos: r.lancamentos, faltas: r.faltas, cancelamentos: r.cancelamentos,
+      taxa: r.lancamentos ? r2(((r.faltas + r.cancelamentos) / r.lancamentos) * 100) : 0 }))
+    .sort((a, b) => (b.faltas + b.cancelamentos) - (a.faltas + a.cancelamentos));
+
+  return {
+    minGuias,
+    taxa: { geral: taxaGeral, guiasLancadas: r2(guiasLancadas), guiasNaoEnviadas: r2(guiasNaoEnviadas), faixaRecepcao, mediana, limiteAlto,
+      avaliadas: comBase.length, acimaDoPadrao, fazemCerto, porTaxa },
+    profissionais,
+    multiSessao,
+    guiasRepetidas,
+    faltas: { lancamentos: totLanc, faltas, cancelamentos, taxa: totLanc ? r2(((faltas + cancelamentos) / totLanc) * 100) : 0,
+      porPessoa, porMedico: fz?.porMedico || null },
+  };
 }

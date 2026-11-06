@@ -90,6 +90,12 @@ export function makeResultadosAmigo() {
   prod.push({ ...prod[1], 'Data Atendimento': '29/09/2026', 'Código Atendimento': '399999', 'Quem enviou': '', 'Data envio': '', 'Número lote': '' });
   rep.push({ ...rep.find((r) => r['Cód. atendimento'] === '300001'), 'Data Atend': '29/09/2026', 'Cód. atendimento': '399999' });
   caixa.push({ ...caixa[1], 'Data Transação': '29/09/2026', 'Data Atendimento': '29/09/2026', 'Editor financeiro': ATEND[4] });
+  // Mesmo número de guia em outro paciente (erro de digitação) e faltas/cancelamentos lançados no caixa.
+  prod.push({ ...prod[2], 'Código Atendimento': '399998', Paciente: PACS[35], 'Número da guia': prod[6]['Número da guia'], 'Conv. cadastrado': prod[6]['Conv. cadastrado'], 'Forma de Pagamento': prod[6]['Forma de Pagamento'] });
+  for (let i = 0; i < 18; i += 1) {
+    caixa.push({ 'Data Transação': `${String(1 + i).padStart(2, '0')}/09/2026`, 'Data Atendimento': `${String(1 + i).padStart(2, '0')}/09/2026`, Paciente: PACS[i],
+      Executante: MEDS[i % 3], 'Editor financeiro': ATEND[i % ATEND.length], 'Qtd / Procedimento': '1 - CONSULTA ESPECIALISTA', 'Forma de Pagamento': i % 3 ? 'Cancelou' : 'Faltou', 'Valor R$': 0 });
+  }
   const pCols = { medicoCol: 'Profissional', pacienteCol: 'Paciente', valorCol: 'Valor total do item R$' };
   const rCols = { medicoCol: 'Profissional Executante', pacienteCol: 'Paciente', valorCol: 'Líquido' };
   const prep = prepararAtendimentos(prod, rep);

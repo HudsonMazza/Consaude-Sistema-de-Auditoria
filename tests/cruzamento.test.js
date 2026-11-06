@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, validateCaixa,
-  convenioDoMedico, parseProcsCaixa, procBate, normProc,
+  convenioDoMedico, parseProcsCaixa, procBate, normProc, analiseEquipe,
 } from "../src/lib/cruzamento.js";
 import { parseConvenios, normalizePreferences } from "../src/lib/preferences.js";
+import { resumoParaIA, sanitizeResumo, buildPrompt } from "../src/lib/aiPrompt.js";
 
 // Linhas no formato dos relatórios do Sistema Amigo (nomes fictícios).
 const P = (o) => ({
@@ -174,6 +175,59 @@ test("guia parcial só conta com um único paciente; número repetido entre paci
   assert.equal(cz.guiasMultiDia.total, 1);
   assert.equal(cz.guiasMultiDia.itens[0].envio, "parcial");
   assert.equal(cz.guiasMultiDia.suspeitasNumeracao, 1);
+  // A lista de números repetidos guarda os pacientes e as datas, para conferir o cadastro.
+  assert.equal(cz.guiasRepetidas.total, 1);
+  assert.deepEqual(cz.guiasRepetidas.itens[0].pacientes, ["BRUNO DIAS", "CLARA MELO"]);
+  assert.deepEqual(cz.guiasRepetidas.itens[0].datas, ["01/09/2026", "09/09/2026"]);
+});
+
+test("equipe: taxa por pessoa com base mínima, faixa da recepção, profissionais e faltas por médico", () => {
+  const prod = [], caixa = [];
+  // 5 atendentes com 20 guias cada: 1, 1, 2, 2 e 18 sem envio (a última fica acima do padrão).
+  const naoEnviadas = { A: 1, B: 1, C: 2, D: 2, E: 18 };
+  let cod = 0;
+  for (const [letra, ne] of Object.entries(naoEnviadas)) {
+    for (let i = 0; i < 20; i += 1) {
+      cod += 1;
+      const pac = `PAC ${letra}${i}`;
+      prod.push(P({ "Código Atendimento": String(cod), Paciente: pac, "Número da guia": String(1000 + cod), ...(i < ne ? { "Quem enviou": "", "Data envio": "", "Número lote": "" } : {}) }));
+      // Executantes variados: quem lança quase só para um médico seria classificada como secretária.
+      const ex = ["DR. RICARDO ALVES", "DRA. LUCIA REIS", "DR. PAULO NUNES", "DRA. MARTA LINS"][i % 4];
+      prod[prod.length - 1].Executante = ex; prod[prod.length - 1].Profissional = ex;
+      caixa.push(C({ Paciente: pac, Executante: ex, "Editor financeiro": `ATENDENTE ${letra}` }));
+    }
+  }
+  // Profissional lança o próprio atendimento e não envia a guia.
+  prod.push(P({ "Código Atendimento": "900", Paciente: "PAC PROF", "Número da guia": "9900", "Quem enviou": "", "Data envio": "", "Número lote": "" }));
+  caixa.push(C({ Paciente: "PAC PROF", "Editor financeiro": "DR. RICARDO ALVES" }));
+  caixa.push(C({ Paciente: "FALTOSO", "Editor financeiro": "ATENDENTE A", Executante: "DRA. LUCIA REIS", "Forma de Pagamento": "Faltou" }));
+  caixa.push(C({ Paciente: "CANCELA", "Editor financeiro": "ATENDENTE B", Executante: "DRA. LUCIA REIS", "Forma de Pagamento": "Cancelou" }));
+  const cz = analisarCruzamento({ prodTodas: prod, repTodas: [], caixaRows: caixa, caixaCols: detectCaixaColumns(caixa), divergencias: [] });
+  const eq = analiseEquipe(cz);
+  assert.equal(eq.taxa.faixaRecepcao.n, 5);
+  assert.deepEqual(eq.taxa.acimaDoPadrao.map((r) => r.nome), ["ATENDENTE E"]);
+  assert.equal(eq.taxa.acimaDoPadrao[0].taxa, 90);
+  assert.ok(eq.taxa.fazemCerto.some((r) => r.nome === "ATENDENTE A"));
+  // O profissional lançou só 1 guia: entra nos pontos cegos, mas não na taxa (base mínima de 10).
+  assert.equal(eq.profissionais.guias, 1);
+  assert.ok(!eq.taxa.porTaxa.some((r) => r.nome === "DR. RICARDO ALVES"));
+  assert.equal(eq.faltas.faltas, 1);
+  assert.equal(eq.faltas.cancelamentos, 1);
+  assert.deepEqual(eq.faltas.porMedico.map((m) => [m.nome, m.faltas, m.cancelamentos]), [["DRA. LUCIA REIS", 1, 1]]);
+  assert.ok(insightsCruzamento(cz).some((t) => /Taxa de guias sem envio da equipe/.test(t)));
+  // Auditoria antiga (sem os campos novos) continua funcionando.
+  const antigo = { ...cz, guiasRepetidas: undefined, faltas: undefined };
+  const eqA = analiseEquipe(antigo);
+  assert.equal(eqA.faltas.porMedico, null);
+  assert.equal(eqA.faltas.faltas, 1);
+  assert.equal(eqA.guiasRepetidas.completo, false);
+  assert.equal(analiseEquipe({ ...cz, comCaixa: false }), null);
+  // A IA recebe só números da equipe: nenhum nome de atendente, profissional ou paciente.
+  const resumo = sanitizeResumo(JSON.parse(JSON.stringify(resumoParaIA({ cruzamento: cz }, eq))));
+  const prompt = buildPrompt(resumo);
+  assert.match(prompt, /taxa de guias de convenio sem envio da equipe/);
+  assert.equal(resumo.equipe.acima, 1);
+  for (const nome of ["ATENDENTE", "RICARDO", "LUCIA", "PAC ", "FALTOSO"]) assert.ok(!prompt.toUpperCase().includes(nome), nome);
 });
 
 test("ranking: taxa = não enviadas ÷ guias lançadas; profissional e conta do sistema identificados", () => {

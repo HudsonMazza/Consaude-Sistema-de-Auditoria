@@ -10,7 +10,7 @@ import {
 import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
 import { useToast } from '../components/Toaster.jsx';
 import AuditFilesCard from '../components/AuditFilesCard.jsx';
-import { GuiasNaoEnviadasCard, RankingLancadoresCard, GuiasMultiDiaCard, LancadoPorLinha, ResumoLancadoresMedico } from '../components/CruzamentoCards.jsx';
+import { GuiasNaoEnviadasCard, RankingLancadoresCard, GuiasMultiDiaCard, EquipeTaxaCard, PontosCegosCard, LancadoPorLinha, ResumoLancadoresMedico } from '../components/CruzamentoCards.jsx';
 
 const COPY_FAIL = { tone: 'error', title: 'Não foi possível copiar', text: 'O navegador bloqueou a área de transferência. Selecione o texto e copie manualmente.' };
 
@@ -296,6 +296,8 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
       {resultados.cruzamento && (
         <>
           <GuiasNaoEnviadasCard cruzamento={resultados.cruzamento} />
+          <EquipeTaxaCard cruzamento={resultados.cruzamento} />
+          <PontosCegosCard cruzamento={resultados.cruzamento} />
           <RankingLancadoresCard cruzamento={resultados.cruzamento} />
           <GuiasMultiDiaCard cruzamento={resultados.cruzamento} />
         </>

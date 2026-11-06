@@ -11,7 +11,7 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
  * Resumo mínimo da auditoria que vai para a IA: contagens, totais por direção,
  * os 5 maiores casos e a contagem por tipo. Nenhum nome de paciente sai do app.
  */
-export function resumoParaIA(res) {
+export function resumoParaIA(res, equipe = null) {
   const divs = Array.isArray(res?.divergencias) ? res.divergencias : [];
   const sobre = divs.filter((d) => d.sentido === "rep_maior");
   const sub = divs.filter((d) => d.sentido === "prod_maior");
@@ -27,6 +27,39 @@ export function resumoParaIA(res) {
     top5: divs.slice(0, 5).map((d) => ({ medico: str(d.medico, 120), sentido: d.sentido === "rep_maior" ? "rep_maior" : "prod_maior", diferenca: str(d.diferenca, 40) })),
     tipos,
     guias: resumoGuias(res?.cruzamento),
+    equipe: resumoEquipe(equipe),
+  };
+}
+
+/**
+ * Equipe e pontos cegos (resultado de analiseEquipe, calculado no navegador), só em números: taxas, contagens e
+ * concentração. Nenhum nome de funcionário, médico ou paciente sai daqui. `null` sem o Fechamento de Caixa.
+ */
+function resumoEquipe(eq) {
+  if (!eq || typeof eq !== "object" || !eq.taxa) return null;
+  const t = eq.taxa;
+  const fz = eq.faltas || {};
+  const totFC = num(fz.faltas) + num(fz.cancelamentos);
+  const top3 = (Array.isArray(fz.porMedico) ? fz.porMedico : []).slice(0, 3).reduce((s, m) => s + num(m.faltas) + num(m.cancelamentos), 0);
+  return {
+    taxaGeral: t.geral == null ? null : num(t.geral),
+    faixaMin: t.faixaRecepcao ? num(t.faixaRecepcao.min) : null,
+    faixaMax: t.faixaRecepcao ? num(t.faixaRecepcao.max) : null,
+    limite: num(t.limiteAlto),
+    avaliadas: num(t.avaliadas),
+    acima: (t.acimaDoPadrao || []).length,
+    taxasAcima: (t.acimaDoPadrao || []).slice(0, 6).map((r) => Math.round(num(r.taxa))),
+    abaixo: (t.fazemCerto || []).length,
+    profGuias: Math.round(num(eq.profissionais?.guias)),
+    profValor: num(eq.profissionais?.valor),
+    profParte: Math.round(num(eq.profissionais?.parteDoTotal)),
+    multiSessao: num(eq.multiSessao?.total),
+    multiSessaoRisco: num(eq.multiSessao?.diferentesEIncompletas),
+    guiasRepetidas: num(eq.guiasRepetidas?.total),
+    faltas: num(fz.faltas),
+    cancelamentos: num(fz.cancelamentos),
+    faltasTaxa: num(fz.taxa),
+    faltasTop3Medicos: totFC && Array.isArray(fz.porMedico) ? Math.round((top3 / totFC) * 100) : null,
   };
 }
 
@@ -80,6 +113,26 @@ export function sanitizeResumo(r) {
       porProfissional: num(r.guias.porProfissional),
       multiDiaIncompletas: num(r.guias.multiDiaIncompletas),
     } : null,
+    equipe: r.equipe && typeof r.equipe === "object" ? {
+      taxaGeral: r.equipe.taxaGeral == null ? null : num(r.equipe.taxaGeral),
+      faixaMin: r.equipe.faixaMin == null ? null : num(r.equipe.faixaMin),
+      faixaMax: r.equipe.faixaMax == null ? null : num(r.equipe.faixaMax),
+      limite: num(r.equipe.limite),
+      avaliadas: num(r.equipe.avaliadas),
+      acima: num(r.equipe.acima),
+      taxasAcima: (Array.isArray(r.equipe.taxasAcima) ? r.equipe.taxasAcima : []).slice(0, 6).map(num),
+      abaixo: num(r.equipe.abaixo),
+      profGuias: num(r.equipe.profGuias),
+      profValor: num(r.equipe.profValor),
+      profParte: num(r.equipe.profParte),
+      multiSessao: num(r.equipe.multiSessao),
+      multiSessaoRisco: num(r.equipe.multiSessaoRisco),
+      guiasRepetidas: num(r.equipe.guiasRepetidas),
+      faltas: num(r.equipe.faltas),
+      cancelamentos: num(r.equipe.cancelamentos),
+      faltasTaxa: num(r.equipe.faltasTaxa),
+      faltasTop3Medicos: r.equipe.faltasTop3Medicos == null ? null : num(r.equipe.faltasTop3Medicos),
+    } : null,
   };
 }
 
@@ -96,6 +149,22 @@ function linhaGuias(g) {
     + ". Guia nao enviada nao aparece como divergencia Producao x Repasse: e receita a cobrar do convenio.\n";
 }
 
+/** Linha do prompt sobre a equipe e os pontos cegos (vazia sem o Fechamento de Caixa). */
+function linhaEquipe(e) {
+  if (!e) return "";
+  const pct = (x) => (x == null ? "?" : String(Math.round(x * 10) / 10).replace(".", ",") + "%");
+  return "- Equipe (Fechamento de Caixa, sem nomes): taxa de guias de convenio sem envio da equipe " + pct(e.taxaGeral)
+    + (e.faixaMin != null ? " (faixa tipica da recepcao " + pct(e.faixaMin) + " a " + pct(e.faixaMax) + ")" : "")
+    + "; " + e.acima + " de " + e.avaliadas + " pessoas avaliadas acima de " + pct(e.limite)
+    + (e.taxasAcima.length ? " (taxas: " + e.taxasAcima.map((x) => x + "%").join(", ") + ")" : "")
+    + "; " + e.abaixo + " abaixo da taxa da equipe. A taxa e proporcao (sem envio / lancadas), nao contagem.\n"
+    + "- Pontos cegos: profissionais que lancam o proprio atendimento deixaram " + e.profGuias + " guias sem envio (" + brl(e.profValor) + ", " + e.profParte + "% do total)"
+    + "; guias de varias sessoes lancadas por pessoas diferentes com parte sem envio: " + e.multiSessaoRisco + " de " + e.multiSessao
+    + "; numeros de guia repetidos entre pacientes: " + e.guiasRepetidas
+    + "; faltas: " + e.faltas + ", cancelamentos: " + e.cancelamentos + " (" + pct(e.faltasTaxa) + " dos lancamentos)"
+    + (e.faltasTop3Medicos != null ? ", 3 medicos concentram " + e.faltasTop3Medicos + "% das faltas e cancelamentos" : "") + ".\n";
+}
+
 /** Prompt da análise (mesmo texto de antes, agora montado a partir do resumo). */
 export function buildPrompt(r) {
   const pct = r.totalMedicos ? Math.round((r.medicosComDivergencia / r.totalMedicos) * 100) : 0;
@@ -110,7 +179,9 @@ export function buildPrompt(r) {
     + "- Producao>Repasse (subpagamento): " + r.sub.n + " medicos, " + brl(r.sub.v) + "\n"
     + "- Top casos: " + top5 + "\n"
     + "- Tipos de divergencia: " + JSON.stringify(r.tipos) + "\n"
-    + linhaGuias(r.guias) + "\n"
+    + linhaGuias(r.guias)
+    + linhaEquipe(r.equipe) + "\n"
+    + (r.equipe ? "Com dados da equipe: inclua no planoDeAcao ao menos uma acao de treinamento ou de processo (sem citar nomes) e preencha equipeEProcesso.\n" : "")
     + "Responda EXATAMENTE neste JSON (todos campos obrigatorios, portugues, profissional):\n"
     + JSON.stringify({
       resumoExecutivo: "1-2 frases executivas",
@@ -120,6 +191,7 @@ export function buildPrompt(r) {
       insights: ["observacao 1", "observacao 2", "observacao 3"],
       anomalias: ["padrao 1", "padrao 2"],
       recomendacoes: ["recomendacao 1", "recomendacao 2", "recomendacao 3"],
+      equipeEProcesso: ["leitura da taxa da equipe ou de um ponto cego, com o que fazer (lista vazia se nao houver dados da equipe)"],
       conclusao: "1-2 frases de conclusao",
     }, null, 2);
 }

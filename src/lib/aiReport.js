@@ -1,6 +1,7 @@
 // Relatório IA: análise da OpenAI (prompt inalterado) + HTML autocontido no visual do design system ConSaúde.
 import { parseValue } from "./engine.js";
 import { resumoParaIA, buildPrompt, callOpenAI } from "./aiPrompt.js";
+import { analiseEquipe, TIPOS_LANCADOR, FAIXAS_GUIA } from "./cruzamento.js";
 
 // ─── ANÁLISE DA IA ───────────────────────────────────────────────────────────
 // O caminho principal é a função de servidor /api/ai-analysis (a chave da OpenAI fica só no servidor).
@@ -29,7 +30,7 @@ async function fetchAIAnalysisServer(resumo, getIdToken) {
 }
 
 export async function fetchAIAnalysis(resultados, { getIdToken } = {}) {
-  const resumo = resumoParaIA(resultados);
+  const resumo = resumoParaIA(resultados, analiseEquipe(resultados?.cruzamento));
   const viaServidor = await fetchAIAnalysisServer(resumo, getIdToken);
   if (viaServidor) return viaServidor;
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -268,6 +269,24 @@ h1{font-size:30px;line-height:38px;font-weight:600;letter-spacing:-.02em;margin:
 .foot .brand__name{font-size:14px}
 .disclaimer{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--ink-3);margin-top:4px}
 /* responsive */
+.tx{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr) 70px;gap:12px;align-items:center;font-size:13px;padding:6px 8px;border-radius:8px}
+.tx.hi{background:var(--danger-soft)}
+.tx__n{min-width:0}.tx__n b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tx__n small{display:block;font-size:11px;line-height:15px;color:var(--ink-3)}
+.tx__t{position:relative;height:10px;border-radius:999px;background:var(--chart-track);overflow:hidden}
+.tx__t .f{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--success) 32%,transparent)}
+.tx__t .v{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--accent)}
+.tx__t .v.hi{background:var(--danger)}
+.tx .num{text-align:right}
+.pcs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pc{background:var(--surface-2);border-radius:10px;padding:14px 16px;min-width:0}
+.pc h3{font-size:13px;line-height:18px;font-weight:600}
+.pc .v{font-size:22px;line-height:28px;font-weight:600;margin-top:6px}
+.pc .v small{font-size:12px;font-weight:400;color:var(--ink-3);margin-left:6px}
+.pc p{font-size:12px;line-height:17px;color:var(--ink-2);margin-top:4px}
+.pc ul{list-style:none;margin-top:8px}
+.pc li{display:flex;justify-content:space-between;gap:12px;font-size:12px;line-height:16px;padding:5px 0;border-top:1px solid var(--line);color:var(--ink-2)}
+.pc li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pc li b{font-weight:600;color:var(--ink);white-space:nowrap}
+@media (max-width:1023px){.pcs{grid-template-columns:1fr}.tx{grid-template-columns:minmax(0,1fr) 64px}.tx__t{grid-column:1/-1;grid-row:2}}
 @media (max-width:1023px){.s8,.s7,.s6,.s5,.s4{grid-column:span 12}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:719px){
   .wrap{padding:0 16px}.top .wrap{height:56px}.brand__sub{display:none}.btn .lbl{display:none}.btn{width:40px;height:40px;padding:0;justify-content:center}
@@ -312,6 +331,9 @@ export function buildReportHTML(res, ai = {}, opts = {}) {
   const now = opts.now instanceof Date ? opts.now : new Date();
   const theme = opts.theme === "light" ? "light" : "dark";
   const divs = Array.isArray(res?.divergencias) ? res.divergencias : [];
+  // Quem lançou (Fechamento de Caixa), usado no detalhamento por paciente e nas guias.
+  const nomes = (lista) => (lista || []).map((l) => titleCase(l.nome)).join(" ou ");
+  const temLancado = divs.some((d) => (d.detalhes || []).some((p) => (p.lancadoPor || []).length));
   const totalMed = Number(res?.totalMedicos) || 0;
   const comDiv = Number(res?.medicosComDivergencia) || divs.length;
   const pct = totalMed ? Math.round((comDiv / totalMed) * 100) : 0;
@@ -373,11 +395,11 @@ export function buildReportHTML(res, ai = {}, opts = {}) {
     const n = docDiff(d); const det = d.detalhes || [];
     const pr = det.map((p) => {
       const pn = patDiff(p);
-      return `<tr><td class="first" data-l="Paciente"><span title="${esc(p.paciente)}">${esc(titleCase(p.paciente))}</span></td><td class="r num" data-l="Produção">${esc(p.producao)}</td><td class="r num" data-l="Repasse">${esc(p.repasse)}</td><td class="r" data-l="Diferença">${diffValue(pn)}</td><td data-l="Tipo">${badge("neutral", p.tipo || "—")}</td></tr>`;
+      return `<tr><td class="first" data-l="Paciente"><span title="${esc(p.paciente)}">${esc(titleCase(p.paciente))}</span></td><td class="r num" data-l="Produção">${esc(p.producao)}</td><td class="r num" data-l="Repasse">${esc(p.repasse)}</td><td class="r" data-l="Diferença">${diffValue(pn)}</td><td data-l="Tipo">${badge("neutral", p.tipo || "—")}</td>${temLancado ? `<td class="muted" data-l="Lançado por">${esc(nomes(p.lancadoPor) || "—")}</td>` : ""}</tr>`;
     }).join("");
     return `<details class="acc"><summary><span class="av">${esc(initials(d.medico))}</span><span class="grow"><b style="font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.medico)}">${esc(titleCase(d.medico))}</b><small style="color:var(--ink-3);font-size:12px">${det.length ? plural(det.length, "paciente divergente", "pacientes divergentes") : "Sem detalhe por paciente"}</small></span>${diffValue(n)}<span class="chev">${icon("chevron", 18)}</span></summary>
 <div class="acc__b"><div class="tiles"><div class="tile"><div class="k">Produção</div><div class="v num">${esc(d.producao)}</div></div><div class="tile"><div class="k">Repasse</div><div class="v num">${esc(d.repasse)}</div></div><div class="tile"><div class="k">Diferença</div><div class="v">${diffValue(n)}</div></div></div>
-${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Tipo</th></tr></thead><tbody>${pr}</tbody></table>` : '<div class="empty">Sem itens por paciente para este médico nesta auditoria.</div>'}</div></details>`;
+${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Produção</th><th class="r">Repasse</th><th class="r">Diferença</th><th>Tipo</th>${temLancado ? "<th>Lançado por</th>" : ""}</tr></thead><tbody>${pr}</tbody></table>` : '<div class="empty">Sem itens por paciente para este médico nesta auditoria.</div>'}</div></details>`;
   }).join("");
 
   // Tipos
@@ -402,6 +424,57 @@ ${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Pro
 
   const semDiv = divs.length === 0;
 
+  // ── Fechamento de Caixa: guias não enviadas, taxa por pessoa e pontos cegos ──
+  const cz = res?.cruzamento && typeof res.cruzamento === "object" ? res.cruzamento : null;
+  const gne = cz?.guiasNaoEnviadas || null;
+  const eq = cz ? analiseEquipe(cz) : null;
+  const pctTxt = (x) => `${String(Math.round((Number(x) || 0) * 10) / 10).replace(".", ",")}%`;
+  let caixaHTML = "";
+  if (gne) {
+    const fx = gne.faixas || {};
+    const prioridadeGuias = (gne.itens || []).slice(0, 12);
+    const linhasGuias = prioridadeGuias.map((g) => `<tr><td class="first" data-l="Atendimento"><b>${esc(g.data)}</b><small style="display:block;color:var(--ink-3);font-size:12px">${g.dias != null ? esc(plural(g.dias, "dia", "dias")) + " sem envio" : "—"}</small></td>
+<td data-l="Paciente"><span title="${esc(g.paciente)}">${esc(titleCase(g.paciente))}</span></td>
+<td data-l="Convênio">${esc(g.convenio)}${g.guias?.length ? ` · ${esc(g.guias.join(", "))}` : ""}</td>
+<td class="r num" data-l="Valor">${esc(money(g.valor))}</td>
+<td data-l="Situação">${badge(g.faixa === "atrasada" ? "danger" : g.faixa === "em_lote" ? "warning" : "neutral", FAIXAS_GUIA[g.faixa] || "—")}</td>
+${cz.comCaixa ? `<td class="muted" data-l="Lançado por">${esc(nomes(g.lancadoPor) || "Sem registro no Caixa")}</td>` : ""}</tr>`).join("");
+    caixaHTML += `<div class="grid">${card("s12", "Guias de convênio não enviadas", `Atendimentos de convênio sem “Quem enviou” na Produção: receita que ainda pode ser cobrada do convênio. Não aparece como divergência Produção × Repasse.${cz.dataReferencia ? ` Dias contados até ${esc(cz.dataReferencia)}.` : ""}`, `
+<div class="kpis" style="margin-bottom:16px">
+<div class="kpi"><div class="k">A faturar</div><div class="v num">${esc(money(gne.total.valor))}</div><div class="s">${esc(plural(gne.total.n, "atendimento", "atendimentos"))}</div></div>
+<div class="kpi"><div class="k">Atrasadas</div><div class="v num">${esc(money(fx.atrasada?.valor))}</div><div class="s">${esc(plural(fx.atrasada?.n || 0, "atendimento", "atendimentos"))} além do prazo do convênio</div></div>
+<div class="kpi"><div class="k">Em lote, sem envio</div><div class="v num">${esc(money(fx.em_lote?.valor))}</div><div class="s">${esc(plural(fx.em_lote?.n || 0, "atendimento", "atendimentos"))}</div></div>
+<div class="kpi"><div class="k">Dentro do prazo</div><div class="v num">${esc(money(fx.no_prazo?.valor))}</div><div class="s">${esc(plural(fx.no_prazo?.n || 0, "atendimento", "atendimentos"))}</div></div>
+</div>
+${prioridadeGuias.length ? `<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Atendimento</th><th>Paciente</th><th>Convênio · guia</th><th class="r">Valor</th><th>Situação</th>${cz.comCaixa ? "<th>Lançado por</th>" : ""}</tr></thead><tbody>${linhasGuias}</tbody></table></div>
+${gne.total.n > prioridadeGuias.length ? `<p class="card__d" style="margin-top:10px">As ${count(prioridadeGuias.length)} primeiras por prioridade (atraso e valor). A lista completa está na exportação em Excel.</p>` : ""}` : '<div class="empty">Todas as guias de convênio do período foram enviadas.</div>'}`)}</div>`;
+  }
+  if (eq) {
+    const t = eq.taxa;
+    const acimaSet = new Set(t.acimaDoPadrao.map((r) => r.nome));
+    const certoSet = new Set(t.fazemCerto.map((r) => r.nome));
+    const faixa = t.faixaRecepcao;
+    const barras = t.porTaxa.slice(0, 15).map((r) => {
+      const hi = acimaSet.has(r.nome);
+      return `<div class="tx${hi ? " hi" : ""}"><span class="tx__n"><b title="${esc(r.nome)}">${esc(titleCase(r.nome))}</b><small>${esc(TIPOS_LANCADOR[r.tipo] || "Atendente")} · ${count(Math.round(r.guiasNaoEnviadas))} de ${count(Math.round(r.guiasLancadas))} guias sem envio</small></span>
+<span class="tx__t">${faixa ? `<i class="f" style="left:${faixa.min}%;width:${Math.max(1, faixa.max - faixa.min)}%"></i>` : ""}<i class="v${hi ? " hi" : ""}" style="width:${Math.max(1.5, Math.min(100, r.taxa))}%"></i></span>
+<span class="num">${hi ? badge("danger", pctTxt(r.taxa)) : certoSet.has(r.nome) ? badge("success", pctTxt(r.taxa)) : esc(pctTxt(r.taxa))}</span></div>`;
+    }).join("");
+    const equipeIA = Array.isArray(ai.equipeEProcesso) ? ai.equipeEProcesso.filter(Boolean) : [];
+    if (t.porTaxa.length) {
+      caixaHTML += `<div class="grid">${card("s7", "Taxa de pendência por pessoa", `Guias de convênio sem envio ÷ guias que a pessoa lançou (quem lançou ${eq.minGuias} ou mais). Taxa da equipe: ${pctTxt(t.geral)}${faixa ? `; recepção entre ${pctTxt(faixa.min)} e ${pctTxt(faixa.max)} (faixa verde)` : ""}. Em vermelho, acima de ${pctTxt(t.limiteAlto)}.`, `<div class="bars" style="gap:2px">${barras}</div>${t.porTaxa.length > 15 ? `<p class="card__d" style="margin-top:10px">As 15 maiores taxas de ${count(t.porTaxa.length)} pessoas. A lista completa está no Excel.</p>` : ""}`)}
+${card("s5", `Equipe e processo <span class="badge badge--ia" style="margin-left:4px">${icon("sparkles", 14)}IA</span>`, "Leitura da IA sobre a taxa da equipe e os pontos cegos. A IA recebe só números, sem nomes.", equipeIA.length ? equipeIA.map((x) => `<div class="li li--ia">${icon("sparkles", 16)}<span>${esc(x)}</span></div>`).join("") : '<div class="empty">A IA não retornou itens para esta seção.</div>')}</div>`;
+    }
+    const { profissionais: pr, multiSessao: ms, guiasRepetidas: gr, faltas: fz } = eq;
+    const li = (arr) => (arr.length ? `<ul>${arr.map(([a, b]) => `<li><span title="${esc(a)}">${esc(a)}</span><b>${esc(b)}</b></li>`).join("")}</ul>` : "");
+    caixaHTML += `<div class="grid">${card("s12", "Pontos cegos do processo", "Padrões que a comparação Produção × Repasse não mostra e só aparecem com o Fechamento de Caixa. “Lançado por” é quem registrou o atendimento: confirme com a equipe antes de concluir.", `<div class="pcs">
+<div class="pc"><h3>Profissional lança e não envia a guia</h3><div class="v num">${esc(plural(Math.round(pr.guias), "guia", "guias"))}<small>${esc(money(pr.valor))}${pr.parteDoTotal ? ` · ${esc(pctTxt(pr.parteDoTotal))} do total` : ""}</small></div><p>Atendimentos registrados no caixa pelo próprio profissional, sem a guia chegar ao faturamento.</p>${li(pr.itens.slice(0, 5).map((r) => [titleCase(r.nome), `${count(Math.round(r.guiasNaoEnviadas))} · ${money(r.valorGuias)}`]))}</div>
+<div class="pc"><h3>Guia de várias sessões, pessoas diferentes</h3><div class="v num">${esc(plural(ms.diferentesEIncompletas, "guia", "guias"))}<small>com parte sem envio, de ${count(ms.total)}</small></div><p>Terapias e séries atendidas em dias diferentes. Quando cada sessão é lançada por uma pessoa (${esc(plural(ms.comLancadoresDiferentes, "guia", "guias"))}), a parte sem envio é fácil de perder.</p></div>
+<div class="pc"><h3>Número de guia repetido entre pacientes</h3><div class="v num">${esc(plural(gr.total, "número", "números"))}<small>no mesmo convênio</small></div><p>Pode ser erro de digitação no cadastro: a guia certa fica sem cobrança.</p>${li(gr.itens.slice(0, 5).map((g) => [`${g.convenio} · guia ${g.guia}`, plural(g.nPacientes, "paciente", "pacientes")]))}</div>
+<div class="pc"><h3>Faltas e cancelamentos</h3><div class="v num">${count(fz.faltas)} · ${count(fz.cancelamentos)}<small>${esc(pctTxt(fz.taxa))} dos lançamentos</small></div><p>Faltas · cancelamentos lançados no Fechamento de Caixa${fz.porMedico?.length ? ", por médico:" : "."}</p>${li((fz.porMedico || []).slice(0, 5).map((m) => [titleCase(m.nome), `${count(m.faltas)} · ${count(m.cancelamentos)}`]))}</div>
+</div>`)}</div>`;
+  }
+
   return `<!DOCTYPE html>
 <html lang="pt-BR" data-theme="${theme}">
 <head>
@@ -424,7 +497,7 @@ ${opts.logoDataUrl ? `<link rel="icon" href="${esc(opts.logoDataUrl)}">` : ""}
 <div class="head">
 <span class="over">${icon("sparkles", 14)}Relatório IA · Auditoria</span>
 <h1>${esc(ref)}</h1>
-<div class="meta"><span>${icon("clock", 14)}Processada em ${esc(proc.date)}${proc.time ? ` às ${esc(proc.time)}` : ""}</span>${res?.file1Name || res?.file2Name ? `<span>${icon("file", 14)}${esc(res.file1Name || "—")} × ${esc(res.file2Name || "—")}</span>` : ""}${opts.responsavel ? `<span>${icon("user", 14)}Responsável: ${esc(opts.responsavel)}</span>` : ""}</div>
+<div class="meta"><span>${icon("clock", 14)}Processada em ${esc(proc.date)}${proc.time ? ` às ${esc(proc.time)}` : ""}</span>${res?.file1Name || res?.file2Name ? `<span>${icon("file", 14)}${esc(res.file1Name || "—")} × ${esc(res.file2Name || "—")}${res.file3Name ? ` × ${esc(res.file3Name)}` : ""}</span>` : ""}${opts.responsavel ? `<span>${icon("user", 14)}Responsável: ${esc(opts.responsavel)}</span>` : ""}</div>
 </div>
 
 <div class="grid">
@@ -445,6 +518,8 @@ ${card("s12", "Visão geral", "", `<div class="kpis">
 <div class="kpi"><div class="k">Médicos com divergência</div><div class="v num">${count(comDiv)}</div><div class="s">${pct}% dos médicos analisados</div></div>
 <div class="kpi"><div class="k">Total de divergências</div><div class="v num">${count(res?.totalDivergencias)}</div><div class="s">itens a revisar</div></div>
 <div class="kpi"><div class="k">Tipos de divergência</div><div class="v num">${count(tipos.length)}</div><div class="s">${tipos[0] ? `mais comum: ${esc(tipos[0][0])}` : "sem detalhe por paciente"}</div></div>
+${eq && eq.taxa.geral != null ? `<div class="kpi"><div class="k">Taxa de pendência da equipe</div><div class="v num">${esc(pctTxt(eq.taxa.geral))}</div><div class="s">${eq.taxa.faixaRecepcao ? `recepção entre ${esc(pctTxt(eq.taxa.faixaRecepcao.min))} e ${esc(pctTxt(eq.taxa.faixaRecepcao.max))}` : "guias sem envio ÷ guias lançadas"}</div></div>` : ""}
+${eq ? `<div class="kpi"><div class="k">Faltas · cancelamentos</div><div class="v num">${count(eq.faltas.faltas)} · ${count(eq.faltas.cancelamentos)}</div><div class="s">${esc(pctTxt(eq.faltas.taxa))} dos lançamentos no caixa</div></div>` : ""}
 ${res?.cruzamento?.guiasNaoEnviadas ? `<div class="kpi"><div class="k">Guias não enviadas</div><div class="v num">${esc(money(res.cruzamento.guiasNaoEnviadas.total.valor))}</div><div class="s">${esc(plural(res.cruzamento.guiasNaoEnviadas.total.n, "atendimento de convênio", "atendimentos de convênio"))} sem envio ao faturamento</div></div>` : ""}
 </div>`)}
 </div>
@@ -475,6 +550,7 @@ ${card("s12", "Prioridades", `${plural(divs.length, "médico com divergência", 
 ${card("s12", "Detalhamento por médico", "Abra um médico para ver cada paciente divergente.", detail, "", `<button class="btn" type="button" data-act="expand">${icon("expand", 16)}<span class="lbl">Expandir todos</span></button>`)}
 </div>`}
 
+${caixaHTML}
 <div class="grid">
 ${tipos.length ? card("s6", "Tipos de divergência", "Quantas vezes cada tipo aparece e o que a IA sugere para evitar.", typeCards, "") : ""}
 ${card(tipos.length ? "s6" : "s12", `Plano de ação <span class="badge badge--ia" style="margin-left:4px">${icon("sparkles", 14)}IA</span>`, "Ações sugeridas pela IA, em ordem de urgência.", plano || '<div class="empty">A IA não retornou ações para esta auditoria.</div>', "list")}

@@ -237,3 +237,40 @@ button, input, select, textarea { font-family: inherit; }
 .cs-split > .cs-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 14px; }
 .cs-split .cs-iconbtn { width: 36px; height: var(--control-md, 40px); margin-left: -1px; border-radius: 0 var(--radius-full) var(--radius-full) 0; }
 .cs-split .cs-iconbtn .cs-icon { width: 18px; height: 18px; }
+
+/* Taxa de pendência por pessoa: barra com a faixa típica da recepção ao fundo. */
+.cs-taxas { list-style: none; margin: 0; padding: var(--space-2) var(--space-5) var(--space-3); display: flex; flex-direction: column; gap: 2px; }
+.cs-taxas li { display: grid; grid-template-columns: auto minmax(0, 1.2fr) minmax(120px, 1fr) 64px; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.cs-taxas li.is-alta { background: var(--danger-soft); }
+.cs-taxas__who { display: flex; flex-direction: column; min-width: 0; }
+.cs-taxas__who b { font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.cs-taxas__who small { font-size: 11px; line-height: 15px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cs-taxas__pct { justify-self: end; font-variant-numeric: tabular-nums; }
+.cs-taxas__pct b { font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.cs-taxas__more { padding: 0 var(--space-5) var(--space-3); }
+.cs-taxa { position: relative; display: block; height: 8px; border-radius: var(--radius-full); background: var(--chart-track); overflow: hidden; }
+.cs-taxa__faixa { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--success) 30%, transparent); }
+.cs-taxa__v { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--accent); }
+.cs-taxa__v--alta { background: var(--danger-fill); }
+.cs-app[data-layout="compact"] .cs-taxas { padding: var(--space-2) var(--space-3) var(--space-3); }
+.cs-app[data-layout="compact"] .cs-taxas li { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 6px; padding: var(--space-2); }
+.cs-app[data-layout="compact"] .cs-taxas .cs-taxa { grid-column: 2 / 4; grid-row: 2; }
+
+/* Pontos cegos do processo: quatro blocos lado a lado (dois no tablet, um no celular). */
+.cs-pcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.cs-app[data-layout="compact"] .cs-pcs { grid-template-columns: minmax(0, 1fr); }
+.cs-pc { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); min-width: 0; }
+.cs-pc__head { display: flex; align-items: center; gap: var(--space-2); }
+.cs-pc__head h3 { margin: 0; font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.cs-pc__icon { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-text); }
+.cs-pc__icon svg { width: 15px; height: 15px; }
+.cs-pc__num { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cs-pc__num b { font: 600 22px/28px var(--font-sans); color: var(--ink); letter-spacing: -0.01em; margin-right: 2px; }
+.cs-pc__num span { display: block; font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.cs-pc__txt { margin: 0; font-size: 12px; line-height: 17px; color: var(--ink-2); }
+.cs-pc__list { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cs-pc__list li { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); padding: 6px var(--space-2); border-radius: var(--radius-xs); background: var(--surface); font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.cs-pc__list li b { flex: none; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cs-pc__cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.cs-pc__cols h4 { margin: 0; font: 600 11px/16px var(--font-sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.cs-pc__empty, .cs-pc__foot { margin: 0; font-size: 12px; line-height: 16px; color: var(--ink-3); }

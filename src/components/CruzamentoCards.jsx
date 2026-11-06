@@ -3,12 +3,12 @@
 //
 // "Lançado por" = coluna "Editor financeiro" do Fechamento de Caixa: quem registrou o atendimento. A tela não diz
 // "responsável pela guia" de propósito — o relatório não mostra quem ficou fisicamente com ela.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Card, Count, Badge, DataTable, Pagination, SearchField, FilterChips, Callout, Accordion, StatStrip, Icon, Avatar,
+  Card, Count, Badge, DataTable, Pagination, SearchField, FilterChips, Callout, Accordion, StatStrip, Icon, Avatar, Button,
   sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from './ds/index.js';
-import { TIPOS_LANCADOR, FAIXAS_GUIA } from '../lib/cruzamento.js';
+import { TIPOS_LANCADOR, FAIXAS_GUIA, analiseEquipe } from '../lib/cruzamento.js';
 
 const fold = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR');
 const plural = (n, um, varios) => `${formatNumber(n)} ${Math.round(n) === 1 ? um : varios}`;
@@ -241,6 +241,8 @@ export function RankingLancadoresCard({ cruzamento }) {
   const [sort, setSort] = useState(null);
   const [tipo, setTipo] = useState('all');
   const ranking = cruzamento?.ranking || [];
+  const eq = useMemo(() => analiseEquipe(cruzamento), [cruzamento]);
+  const acima = new Set((eq?.taxa.acimaDoPadrao || []).map((r) => r.nome));
   const porTipo = (t) => ranking.filter((r) => r.tipo === t).length;
   const visiveis = ranking.filter((r) => tipo === 'all' || r.tipo === tipo);
   const columns = [
@@ -254,10 +256,12 @@ export function RankingLancadoresCard({ cruzamento }) {
       : <span className="cs-faint">—</span>) },
     { key: 'taxa', header: 'Taxa', align: 'right', sortable: true, sortValue: (r) => r.taxaGuias ?? -1, render: (r) => (r.taxaGuias == null
       ? <span className="cs-faint">—</span>
-      : <span title={`${formatNumber(Math.round(r.guiasNaoEnviadas))} de ${formatNumber(Math.round(r.guiasLancadas))} guias de convênio que lançou`}>{formatPercent(r.taxaGuias)}</span>) },
+      : acima.has(r.nome)
+        ? <Badge tone="danger" size="sm" title={`Acima do padrão da equipe (${formatPercent(eq.taxa.limiteAlto)} ou mais). ${formatNumber(Math.round(r.guiasNaoEnviadas))} de ${formatNumber(Math.round(r.guiasLancadas))} guias de convênio que lançou`}>{formatPercent(r.taxaGuias)}</Badge>
+        : <span title={`${formatNumber(Math.round(r.guiasNaoEnviadas))} de ${formatNumber(Math.round(r.guiasLancadas))} guias de convênio que lançou`}>{formatPercent(r.taxaGuias)}</span>) },
     { key: 'div', header: 'Divergências', align: 'right', priority: 2, sortable: true, sortValue: (r) => r.valorDivergencias, render: (r) => (r.divergencias
       ? `${formatNumber(Math.round(r.divergencias))} · ${formatBRL(r.valorDivergencias)}` : <span className="cs-faint">—</span>) },
-    { key: 'faltas', header: 'Faltas · cancel.', align: 'right', priority: 3, sortable: true, sortValue: (r) => r.faltas + r.cancelamentos, render: (r) => `${formatNumber(r.faltas)} · ${formatNumber(r.cancelamentos)}` },
+    { key: 'faltas', header: 'Faltas · cancel.', align: 'right', priority: 2, sortable: true, sortValue: (r) => r.faltas + r.cancelamentos, render: (r) => `${formatNumber(r.faltas)} · ${formatNumber(r.cancelamentos)}` },
   ];
   const sorted = sortRows(visiveis, columns, sort);
   const { pageRows, current, pageSize, setPage, setPageSize } = usePaged(sorted, [sort, tipo]);
@@ -325,6 +329,143 @@ export function GuiasMultiDiaCard({ cruzamento }) {
           {plural(m.suspeitasNumeracao, 'número de guia aparece', 'números de guia aparecem')} em pacientes diferentes no mesmo convênio. Provável erro de digitação; ficaram fora desta lista.
         </p>
       )}
+    </Card>
+  );
+}
+
+/** Barra da taxa de uma pessoa, com a faixa típica da recepção desenhada ao fundo. */
+function TaxaBar({ taxa, faixa, alta }) {
+  return (
+    <span className="cs-taxa" aria-hidden="true">
+      {faixa && <i className="cs-taxa__faixa" style={{ left: `${faixa.min}%`, width: `${Math.max(1, faixa.max - faixa.min)}%` }} />}
+      <i className={`cs-taxa__v${alta ? ' cs-taxa__v--alta' : ''}`} style={{ width: `${Math.max(1.5, Math.min(100, taxa))}%` }} />
+    </span>
+  );
+}
+
+/**
+ * Taxa de pendência por pessoa: guias de convênio sem envio ÷ guias de convênio que a pessoa lançou.
+ * Proporção, não contagem: quem atende mais não aparece no topo só por isso. Mostra o padrão da recepção, quem
+ * passa muito dele (para treinar) e quem fica abaixo (para reconhecer).
+ */
+export function EquipeTaxaCard({ cruzamento }) {
+  const { compact } = useViewport();
+  const eq = useMemo(() => analiseEquipe(cruzamento), [cruzamento]);
+  const [todos, setTodos] = useState(false);
+  if (!eq || eq.taxa.geral == null || !eq.taxa.avaliadas) return null;
+  const t = eq.taxa;
+  const certo = new Set(t.fazemCerto.map((r) => r.nome));
+  const acima = new Set(t.acimaDoPadrao.map((r) => r.nome));
+  const LIMITE = 10;
+  const lista = todos ? t.porTaxa : t.porTaxa.slice(0, LIMITE);
+  return (
+    <Card flush title={<>Taxa de pendência por pessoa <Count>{formatNumber(t.avaliadas)}</Count></>}
+      subtitle={`Guias de convênio sem envio ÷ guias de convênio que a pessoa lançou. É uma proporção: quem atende mais não é punido por isso. Entra quem lançou ${eq.minGuias} guias ou mais.`}>
+      <div className="cs-card-toolbar">
+        <StatStrip compact={compact} items={[
+          { label: 'Taxa da equipe', value: formatPercent(t.geral), sub: `${formatNumber(Math.round(t.guiasNaoEnviadas))} de ${formatNumber(Math.round(t.guiasLancadas))}`, icon: 'users' },
+          { label: 'Faixa típica da recepção', value: t.faixaRecepcao ? `${formatPercent(t.faixaRecepcao.min)} a ${formatPercent(t.faixaRecepcao.max)}` : '—', icon: 'user-check' },
+          { label: `Acima de ${formatPercent(t.limiteAlto)}`, value: plural(t.acimaDoPadrao.length, 'pessoa', 'pessoas'), icon: 'triangle-alert', tone: t.acimaDoPadrao.length ? 'danger' : undefined },
+          { label: 'Abaixo da equipe', value: plural(t.fazemCerto.length, 'pessoa', 'pessoas'), icon: 'circle-check', tone: t.fazemCerto.length ? 'success' : undefined },
+        ]} />
+      </div>
+      <ul className="cs-taxas">
+        {lista.map((r) => (
+          <li key={r.nome} className={acima.has(r.nome) ? 'is-alta' : certo.has(r.nome) ? 'is-certo' : ''}>
+            <Avatar name={r.nome} size="sm" />
+            <span className="cs-taxas__who">
+              <b className="cs-truncate" title={titleCase(r.nome)}>{titleCase(r.nome)}</b>
+              <small>{TIPOS_LANCADOR[r.tipo] || 'Atendente'} · {formatNumber(Math.round(r.guiasNaoEnviadas))} de {formatNumber(Math.round(r.guiasLancadas))} guias sem envio</small>
+            </span>
+            <TaxaBar taxa={r.taxa} faixa={t.faixaRecepcao} alta={acima.has(r.nome)} />
+            <span className="cs-taxas__pct">
+              {acima.has(r.nome) ? <Badge tone="danger" size="sm">{formatPercent(r.taxa)}</Badge>
+                : certo.has(r.nome) ? <Badge tone="success" size="sm">{formatPercent(r.taxa)}</Badge>
+                : <b>{formatPercent(r.taxa)}</b>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {t.porTaxa.length > LIMITE && (
+        <div className="cs-taxas__more">
+          <Button variant="link" onClick={() => setTodos((v) => !v)}>{todos ? 'Mostrar menos' : `Mostrar as ${formatNumber(t.porTaxa.length)} pessoas`}</Button>
+        </div>
+      )}
+      <div className="cs-card-note">
+        <p><Icon name="info" size={14} /> A faixa clara atrás das barras é a faixa típica da recepção{t.faixaRecepcao ? ` (${plural(t.faixaRecepcao.n, 'atendente', 'atendentes')} com 20 guias ou mais)` : ''}. Em vermelho, quem passa de {formatPercent(t.limiteAlto)}: vale treinar. Em verde, quem fica abaixo da taxa da equipe: vale reconhecer.</p>
+        <p><Icon name="circle-help" size={14} /> “Lançado por” é quem registrou o atendimento. Converse com a pessoa antes de concluir: a guia pode ter ficado com outra pessoa da equipe.</p>
+      </div>
+    </Card>
+  );
+}
+
+/** Lista curta "nome · detalhe" dentro de um ponto cego. */
+function MiniLista({ itens, vazio }) {
+  if (!itens.length) return vazio ? <p className="cs-pc__empty">{vazio}</p> : null;
+  return (
+    <ul className="cs-pc__list">
+      {itens.map((it) => (
+        <li key={it.key}><span className="cs-truncate" title={it.title || it.label}>{it.label}</span><b>{it.value}</b></li>
+      ))}
+    </ul>
+  );
+}
+
+/** Pontos cegos do processo: o que Produção × Repasse não mostra e só aparece cruzando com o Fechamento de Caixa. */
+export function PontosCegosCard({ cruzamento }) {
+  const eq = useMemo(() => analiseEquipe(cruzamento), [cruzamento]);
+  if (!eq) return null;
+  const { profissionais: pr, multiSessao: ms, guiasRepetidas: gr, faltas: fz } = eq;
+  const qtd = (x) => formatNumber(Math.round(x));
+  const vazioReprocessar = 'Processe a auditoria de novo para ver esta lista (ela foi gravada antes desta análise).';
+  return (
+    <Card title="Pontos cegos do processo"
+      subtitle="Padrões que a comparação Produção × Repasse não mostra. Aparecem só quando a auditoria inclui o Fechamento de Caixa.">
+      <div className="cs-pcs">
+        <section className="cs-pc">
+          <header className="cs-pc__head"><span className="cs-pc__icon"><Icon name="stethoscope" /></span><h3>Profissional lança e não envia a guia</h3></header>
+          <p className="cs-pc__num"><b>{qtd(pr.guias)}</b> {Math.round(pr.guias) === 1 ? 'guia sem envio' : 'guias sem envio'} <span>{formatBRL(pr.valor)}{pr.parteDoTotal ? ` · ${formatPercent(pr.parteDoTotal)} do total` : ''}</span></p>
+          <p className="cs-pc__txt">Atendimentos que o próprio profissional registrou no caixa, sem a guia chegar ao faturamento. Nenhuma atendente passa por eles.</p>
+          <MiniLista vazio="Nenhum profissional deixou guia sem envio."
+            itens={pr.itens.map((r) => ({ key: r.nome, label: titleCase(r.nome), value: `${qtd(r.guiasNaoEnviadas)} · ${formatBRL(r.valorGuias)}` }))} />
+        </section>
+
+        <section className="cs-pc">
+          <header className="cs-pc__head"><span className="cs-pc__icon"><Icon name="calendar" /></span><h3>Guia de várias sessões, pessoas diferentes</h3></header>
+          <p className="cs-pc__num"><b>{formatNumber(ms.diferentesEIncompletas)}</b> {ms.diferentesEIncompletas === 1 ? 'guia com parte sem envio' : 'guias com parte sem envio'} <span>de {plural(ms.total, 'guia', 'guias')} com várias sessões</span></p>
+          <p className="cs-pc__txt">Terapias e séries atendidas em dias diferentes. Quando cada sessão é lançada por uma pessoa ({plural(ms.comLancadoresDiferentes, 'guia', 'guias')}), a parte que fica sem envio é fácil de perder. A lista completa está em “Guias usadas em mais de um dia”.</p>
+        </section>
+
+        <section className="cs-pc">
+          <header className="cs-pc__head"><span className="cs-pc__icon"><Icon name="copy" /></span><h3>Número de guia repetido entre pacientes</h3></header>
+          <p className="cs-pc__num"><b>{formatNumber(gr.total)}</b> {gr.total === 1 ? 'número repetido' : 'números repetidos'} <span>no mesmo convênio</span></p>
+          <p className="cs-pc__txt">O mesmo número de guia em pacientes diferentes. Pode ser erro de digitação no cadastro, e a guia certa fica sem cobrança.</p>
+          <MiniLista vazio={gr.total && !gr.completo ? vazioReprocessar : 'Nenhum número de guia repetido.'}
+            itens={gr.itens.slice(0, 5).map((g) => ({
+              key: g.convenio + g.guia, label: `${g.convenio} · guia ${g.guia}`,
+              title: `${g.pacientes.map(titleCase).join(', ')} · ${g.datas.join(', ')}`, value: plural(g.nPacientes, 'paciente', 'pacientes'),
+            }))} />
+          {gr.total > 5 && gr.itens.length > 5 && <p className="cs-pc__foot">E mais {formatNumber(gr.total - 5)} na exportação em Excel, com os pacientes e as datas.</p>}
+        </section>
+
+        <section className="cs-pc">
+          <header className="cs-pc__head"><span className="cs-pc__icon"><Icon name="user-x" /></span><h3>Faltas e cancelamentos</h3></header>
+          <p className="cs-pc__num"><b>{formatNumber(fz.faltas)}</b> faltas · <b>{formatNumber(fz.cancelamentos)}</b> cancel. <span>{formatPercent(fz.taxa)} dos lançamentos</span></p>
+          <div className="cs-pc__cols">
+            <div>
+              <h4>Por médico</h4>
+              <MiniLista vazio={fz.porMedico ? 'Sem faltas por médico.' : vazioReprocessar}
+                itens={(fz.porMedico || []).slice(0, 5).map((m) => ({ key: m.nome, label: titleCase(m.nome), title: `${m.faltas} faltas, ${m.cancelamentos} cancelamentos, ${formatPercent(m.taxa)} da agenda`, value: `${formatNumber(m.faltas)} · ${formatNumber(m.cancelamentos)}` }))} />
+            </div>
+            <div>
+              <h4>Por quem lançou</h4>
+              <MiniLista vazio="Sem faltas lançadas."
+                itens={fz.porPessoa.slice(0, 5).map((p) => ({ key: p.nome, label: titleCase(p.nome), title: `${p.faltas} faltas, ${p.cancelamentos} cancelamentos`, value: `${formatNumber(p.faltas)} · ${formatNumber(p.cancelamentos)}` }))} />
+            </div>
+          </div>
+          <p className="cs-pc__foot">Números: faltas · cancelamentos. A lista completa está na exportação em Excel.</p>
+        </section>
+      </div>
     </Card>
   );
 }

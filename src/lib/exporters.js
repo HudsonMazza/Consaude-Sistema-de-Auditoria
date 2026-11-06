@@ -11,7 +11,7 @@
 // mais, laranja), negativo = "Produção maior" (pago a menos, azul). Nunca vermelho/verde para direção.
 import { parseValue } from './engine.js';
 import { titleCase } from './names.js';
-import { TIPOS_LANCADOR, FAIXAS_GUIA } from './cruzamento.js';
+import { TIPOS_LANCADOR, FAIXAS_GUIA, analiseEquipe } from './cruzamento.js';
 
 // ─── Helpers de dados (sem dependência de DOM) ────────────────────────────────
 
@@ -28,6 +28,8 @@ function money(v, { signed = false } = {}) {
   return n < 0 ? '–' + s : s;
 }
 const count = (n) => NUM.format(Number(n) || 0);
+/** "1 guia" / "3 guias" (arredonda antes de escolher). */
+const pl = (n, um, varios) => `${count(Math.round(Number(n) || 0))} ${Math.round(Number(n) || 0) === 1 ? um : varios}`;
 /** Arredonda centavos (evita 2325.2999999 nas células do Excel). */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -152,6 +154,7 @@ export function buildReportModel(res, opts = {}) {
     hasLancadoPor: doctors.some((d) => d.items.some((p) => p.lancadoPor)),
     file3Name: res?.file3Name || null,
     cruzamento: res?.cruzamento && typeof res.cruzamento === 'object' ? res.cruzamento : null,
+    equipe: res?.cruzamento && typeof res.cruzamento === 'object' ? analiseEquipe(res.cruzamento) : null,
   };
 }
 
@@ -331,7 +334,33 @@ export async function createPDF(res, opts = {}) {
     font(7, 'normal', C.ink3);
     doc.text(fit(k.hint, kw - 10), x + 5, y + 18.3);
   });
-  y += kh + 9;
+  y += kh + 4;
+
+  // KPIs do cruzamento (guias não enviadas e, com o Fechamento de Caixa, equipe e faltas).
+  const gneK = m.cruzamento?.guiasNaoEnviadas;
+  const eqK = m.equipe;
+  const kpis2 = [
+    ...(gneK ? [{ label: 'Guias de convênio não enviadas', value: money(gneK.total.valor), hint: `${count(gneK.total.n)} atendimentos · ${count(gneK.faixas?.atrasada?.n)} atrasados` }] : []),
+    ...(eqK && eqK.taxa.geral != null ? [{ label: 'Taxa de pendência da equipe', value: `${PCT.format(eqK.taxa.geral)}%`,
+      hint: eqK.taxa.faixaRecepcao ? `recepção entre ${PCT.format(eqK.taxa.faixaRecepcao.min)}% e ${PCT.format(eqK.taxa.faixaRecepcao.max)}%` : 'guias sem envio ÷ guias lançadas' }] : []),
+    ...(eqK ? [{ label: 'Faltas · cancelamentos', value: `${count(eqK.faltas.faltas)} · ${count(eqK.faltas.cancelamentos)}`, hint: `${PCT.format(eqK.faltas.taxa)}% dos lançamentos no caixa` }] : []),
+  ];
+  if (kpis2.length) {
+    const kw2 = (CW - gap * (kpis2.length - 1)) / kpis2.length;
+    kpis2.forEach((k, i) => {
+      const x = PAGE.m + i * (kw2 + gap);
+      fill(C.blueTint); stroke(C.softBlue, 0.25);
+      doc.roundedRect(x, y, kw2, kh, 2.5, 2.5, 'FD');
+      font(7.5, 'normal', C.ink3);
+      doc.text(fit(k.label, kw2 - 10), x + 5, y + 6.5);
+      font(16, 'bold', C.navy);
+      doc.text(k.value, x + 5, y + 14);
+      font(7, 'normal', C.ink3);
+      doc.text(fit(k.hint, kw2 - 10), x + 5, y + 18.3);
+    });
+    y += kh + 4;
+  }
+  y += 5;
 
   // Direção das divergências
   sectionTitle('Direção das divergências', 'Diferença = Repasse – Produção, por médico. Repasse maior = pago a mais; Produção maior = pago a menos.');
@@ -672,6 +701,96 @@ export async function createPDF(res, opts = {}) {
     y = doc.lastAutoTable.finalY + 6;
   }
 
+  // ── Taxa de pendência por pessoa (Fechamento de Caixa) ──
+  const eq = m.equipe;
+  if (eq && eq.taxa.porTaxa.length) {
+    const t = eq.taxa;
+    const acimaSet = new Set(t.acimaDoPadrao.map((r) => r.nome));
+    const certoSet = new Set(t.fazemCerto.map((r) => r.nome));
+    sectionTitle('Taxa de pendência por pessoa',
+      `Guias de convênio sem envio ÷ guias de convênio que a pessoa lançou (só quem lançou ${eq.minGuias} ou mais). Proporção, não contagem: quem atende mais não é punido. `
+      + `Taxa da equipe: ${PCT.format(t.geral)}%${t.faixaRecepcao ? `; faixa típica da recepção: ${PCT.format(t.faixaRecepcao.min)}% a ${PCT.format(t.faixaRecepcao.max)}%` : ''}. `
+      + `Acima de ${PCT.format(t.limiteAlto)}%: ${count(t.acimaDoPadrao.length)} ${t.acimaDoPadrao.length === 1 ? 'pessoa' : 'pessoas'} para treinar; abaixo da taxa da equipe: ${count(t.fazemCerto.length)} para reconhecer.`, { need: 60 });
+    autoTable(doc, {
+      ...tableBase,
+      startY: y,
+      head: [['Pessoa', 'Tipo', { content: 'Guias lançadas', styles: R }, { content: 'Sem envio', styles: R }, { content: 'Valor', styles: R }, { content: 'Taxa', styles: R }, 'Situação']],
+      body: t.porTaxa.map((r) => [
+        titleCase(r.nome), TIPOS_LANCADOR[r.tipo] || 'Atendente', count(Math.round(r.guiasLancadas)), count(Math.round(r.guiasNaoEnviadas)), money(r.valorGuias),
+        `${PCT.format(r.taxa)}%`, acimaSet.has(r.nome) ? 'Acima do padrão' : certoSet.has(r.nome) ? 'Abaixo da equipe' : '—',
+      ]),
+      styles: { ...tableBase.styles, fontSize: 7.5 },
+      columnStyles: {
+        0: { cellWidth: 'auto', fontStyle: 'bold' },
+        1: { cellWidth: 30, fontSize: 7 },
+        2: { cellWidth: 18, halign: 'right' },
+        3: { cellWidth: 16, halign: 'right' },
+        4: { cellWidth: 22, halign: 'right' },
+        5: { cellWidth: 14, halign: 'right' },
+        6: { cellWidth: 26 },
+      },
+      didParseCell: (data) => {
+        if (data.section === 'body' && (data.column.index === 5 || data.column.index === 6) && acimaSet.has(t.porTaxa[data.row.index]?.nome)) {
+          data.cell.styles.textColor = C.navy;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  }
+
+  // ── Pontos cegos do processo ──
+  if (eq) {
+    const { profissionais: pr, multiSessao: ms, guiasRepetidas: gr, faltas: fz } = eq;
+    sectionTitle('Pontos cegos do processo', 'Padrões que a comparação Produção × Repasse não mostra e só aparecem com o Fechamento de Caixa.', { need: 50 });
+    autoTable(doc, {
+      ...tableBase,
+      startY: y,
+      head: [['Ponto', 'Resultado', 'Detalhe']],
+      body: [
+        ['Profissional lança e não envia a guia', `${pl(pr.guias, "guia", "guias")} · ${money(pr.valor)}`,
+          pr.itens.length ? pr.itens.slice(0, 4).map((r) => `${titleCase(r.nome)} (${count(Math.round(r.guiasNaoEnviadas))})`).join(', ') + (pr.pessoas > 4 ? ` e mais ${count(pr.pessoas - 4)}` : '') : 'Nenhum profissional deixou guia sem envio.'],
+        ['Guia de várias sessões, pessoas diferentes', `${pl(ms.diferentesEIncompletas, "guia", "guias")} com parte sem envio`,
+          `${pl(ms.total, "guia usada", "guias usadas")} em mais de um dia; ${pl(ms.comLancadoresDiferentes, "lançada", "lançadas")} por pessoas diferentes. A parte sem envio é fácil de perder.`],
+        ['Número de guia repetido entre pacientes', pl(gr.total, "número", "números"), 'Mesmo número de guia, mesmo convênio, pacientes diferentes: pode ser erro de digitação no cadastro.'],
+        ['Faltas e cancelamentos', `${pl(fz.faltas, "falta", "faltas")} · ${pl(fz.cancelamentos, "cancelamento", "cancelamentos")}`,
+          `${PCT.format(fz.taxa)}% dos lançamentos no caixa.${fz.porMedico?.length ? ` Mais faltas e cancelamentos: ${fz.porMedico.slice(0, 3).map((x) => `${titleCase(x.nome)} (${count(x.faltas + x.cancelamentos)})`).join(', ')}.` : ''}`],
+      ],
+      styles: { ...tableBase.styles, fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 52, fontStyle: 'bold' }, 1: { cellWidth: 40 }, 2: { cellWidth: 'auto' } },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+    if (fz.porMedico?.length) {
+      sectionTitle('Faltas e cancelamentos por médico', 'Executante do Fechamento de Caixa. Taxa = (faltas + cancelamentos) ÷ lançamentos do médico no caixa.', { need: 40 });
+      autoTable(doc, {
+        ...tableBase,
+        startY: y,
+        head: [['Médico', { content: 'Lançamentos', styles: R }, { content: 'Faltas', styles: R }, { content: 'Cancelamentos', styles: R }, { content: 'Taxa', styles: R }]],
+        body: fz.porMedico.slice(0, 20).map((x) => [titleCase(x.nome), count(x.lancamentos), count(x.faltas), count(x.cancelamentos), `${PCT.format(x.taxa)}%`]),
+        styles: { ...tableBase.styles, fontSize: 7.5 },
+        columnStyles: { 0: { cellWidth: 'auto', fontStyle: 'bold' }, 1: { cellWidth: 24, halign: 'right' }, 2: { cellWidth: 18, halign: 'right' }, 3: { cellWidth: 26, halign: 'right' }, 4: { cellWidth: 16, halign: 'right' } },
+      });
+      y = doc.lastAutoTable.finalY + 4;
+      if (fz.porMedico.length > 20) {
+        font(7.5, 'normal', C.ink3);
+        doc.text(`Os 20 médicos com mais faltas e cancelamentos. A lista completa está no Excel.`, PAGE.m, y + 1);
+        y += 6;
+      }
+    }
+    if (gr.itens.length && m.incluirPacientes) {
+      sectionTitle('Números de guia repetidos entre pacientes', 'Confira o cadastro: a guia certa de um dos pacientes pode ter ficado sem cobrança.', { need: 40 });
+      autoTable(doc, {
+        ...tableBase,
+        startY: y,
+        head: [['Convênio · guia', 'Pacientes', 'Datas']],
+        body: gr.itens.slice(0, 40).map((g) => [`${g.convenio} · ${g.guia}`, g.pacientes.map(titleCase).join(', ') + (g.nPacientes > g.pacientes.length ? ` e mais ${g.nPacientes - g.pacientes.length}` : ''), g.datas.join(', ')]),
+        styles: { ...tableBase.styles, fontSize: 7.2 },
+        columnStyles: { 0: { cellWidth: 46 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 } },
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+  }
+
   // ── Cabeçalho e rodapé em todas as páginas ──
   const pages = doc.getNumberOfPages();
   const footLeft = `ConSaúde · Auditoria financeira   ·   Gerado em ${dateBR(m.now)} às ${timeBR(m.now)}   ·   Responsável: ${m.responsavel}`;
@@ -836,6 +955,32 @@ export async function createWorkbook(res, opts = {}) {
   });
   ws.getRow(r).height = 20; ws.getRow(r + 1).height = 28; ws.getRow(r + 2).height = 18;
   r += 4;
+
+  // Indicadores do cruzamento: guias não enviadas e, com o Fechamento de Caixa, equipe e faltas.
+  const gneX = m.cruzamento?.guiasNaoEnviadas;
+  const eqX = m.equipe;
+  const kpisCaixa = [
+    ...(gneX ? [{ label: 'Guias não enviadas', value: gneX.total.valor, fmt: FMT_MONEY, hint: `${count(gneX.total.n)} atendimentos de convênio` }] : []),
+    ...(eqX && eqX.taxa.geral != null ? [{ label: 'Taxa de pendência da equipe', value: eqX.taxa.geral / 100, fmt: FMT_PCT,
+      hint: eqX.taxa.faixaRecepcao ? `recepção: ${PCT.format(eqX.taxa.faixaRecepcao.min)}% a ${PCT.format(eqX.taxa.faixaRecepcao.max)}%` : 'sem envio ÷ lançadas' }] : []),
+    ...(eqX ? [
+      { label: 'Acima do padrão', value: eqX.taxa.acimaDoPadrao.length, fmt: FMT_INT, hint: `taxa de ${PCT.format(eqX.taxa.limiteAlto)}% ou mais` },
+      { label: 'Faltas · cancelamentos', value: `${count(eqX.faltas.faltas)} · ${count(eqX.faltas.cancelamentos)}`, fmt: '@', hint: `${PCT.format(eqX.faltas.taxa)}% dos lançamentos no caixa` },
+    ] : []),
+  ];
+  if (kpisCaixa.length) {
+    kpisCaixa.forEach((k, i) => {
+      const c = 2 + i;
+      const l = ws.getCell(r, c); l.value = k.label; l.font = { name: FONT, size: 9, color: { argb: X.ink3 } };
+      const v = ws.getCell(r + 1, c); v.value = k.value; v.numFmt = k.fmt; v.font = { name: FONT, size: 16, bold: true, color: { argb: X.navy } };
+      const h = ws.getCell(r + 2, c); h.value = k.hint; h.font = { name: FONT, size: 9, color: { argb: X.ink3 } };
+      [l, v, h].forEach((cell) => { cell.fill = solid(X.blueTint); cell.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 }; });
+      l.border = { top: { style: 'thin', color: { argb: X.line } } };
+      h.border = { bottom: { style: 'thin', color: { argb: X.line } } };
+    });
+    ws.getRow(r).height = 20; ws.getRow(r + 1).height = 28; ws.getRow(r + 2).height = 18;
+    r += 4;
+  }
 
   section('Direção das divergências');
   const dirHead = ws.getRow(r);
@@ -1118,6 +1263,89 @@ export async function createWorkbook(res, opts = {}) {
       guiasLancadas: r.guiasLancadas, guiasNaoEnviadas: r.guiasNaoEnviadas, valorGuias: r.valorGuias, taxa: r.taxaGuias == null ? '' : r.taxaGuias / 100,
       guiasAtrasadas: r.guiasAtrasadas, divergencias: r.divergencias, valorDivergencias: r.valorDivergencias, faltas: r.faltas, cancelamentos: r.cancelamentos,
     })), '"Editor financeiro" do Fechamento de Caixa. Atendimento lançado por duas pessoas indistinguíveis conta meio para cada uma (por isso as casas decimais).');
+  }
+
+  const eq = m.equipe;
+  if (eq) {
+    const t = eq.taxa;
+    const acimaSet = new Set(t.acimaDoPadrao.map((r) => r.nome));
+    const certoSet = new Set(t.fazemCerto.map((r) => r.nome));
+    // ── Taxa de pendência por pessoa ──
+    if (t.porTaxa.length) {
+      tabelaSimples(wb, 'Taxa por pessoa', X.navy, m.referencia, [
+        { header: 'Pessoa', key: 'nome', width: 34, bold: true },
+        { header: 'Tipo', key: 'tipo', width: 22 },
+        { header: 'Lançamentos', key: 'lancamentos', width: 12, fmt: FMT_INT },
+        { header: 'Guias de convênio lançadas', key: 'guiasLancadas', width: 14, fmt: '#,##0.0' },
+        { header: 'Guias sem envio', key: 'guiasNaoEnviadas', width: 12, fmt: '#,##0.0' },
+        { header: 'Valor das guias', key: 'valorGuias', width: 15, fmt: FMT_MONEY },
+        { header: 'Taxa de pendência', key: 'taxa', width: 12, fmt: FMT_PCT },
+        { header: 'Situação', key: 'situacao', width: 20 },
+      ], t.porTaxa.map((r) => ({
+        nome: titleCase(r.nome), tipo: TIPOS_LANCADOR[r.tipo] || 'Atendente', lancamentos: r.lancamentos, guiasLancadas: r.guiasLancadas,
+        guiasNaoEnviadas: r.guiasNaoEnviadas, valorGuias: r.valorGuias, taxa: r.taxa / 100,
+        situacao: acimaSet.has(r.nome) ? 'Acima do padrão' : certoSet.has(r.nome) ? 'Abaixo da equipe' : '',
+      })), `Taxa = guias de convênio sem envio ÷ guias de convênio lançadas pela pessoa (só quem lançou ${eq.minGuias} ou mais). Taxa da equipe: ${PCT.format(t.geral)}%`
+        + (t.faixaRecepcao ? `; faixa típica da recepção: ${PCT.format(t.faixaRecepcao.min)}% a ${PCT.format(t.faixaRecepcao.max)}%` : '')
+        + `; "Acima do padrão" a partir de ${PCT.format(t.limiteAlto)}%.`);
+    }
+    // ── Pontos cegos (resumo) ──
+    const { profissionais: pr, multiSessao: ms, guiasRepetidas: gr, faltas: fz } = eq;
+    tabelaSimples(wb, 'Pontos cegos', X.orange, m.referencia, [
+      { header: 'Ponto cego', key: 'ponto', width: 42, bold: true },
+      { header: 'Quantidade', key: 'qtd', width: 14, fmt: '#,##0.##' },
+      { header: 'Valor', key: 'valor', width: 15, fmt: FMT_MONEY },
+      { header: 'Detalhe', key: 'detalhe', width: 90 },
+    ], [
+      { ponto: 'Profissional lança o próprio atendimento e não envia a guia', qtd: pr.guias, valor: pr.valor,
+        detalhe: pr.itens.map((r) => `${titleCase(r.nome)}: ${pl(r.guiasNaoEnviadas, "guia", "guias")}`).join('; ') || 'Nenhum' },
+      { ponto: 'Guias de várias sessões lançadas por pessoas diferentes, com parte sem envio', qtd: ms.diferentesEIncompletas, valor: '',
+        detalhe: `${pl(ms.total, "guia usada", "guias usadas")} em mais de um dia; ${pl(ms.comLancadoresDiferentes, "lançada", "lançadas")} por pessoas diferentes; ${count(ms.comEnvioIncompleto)} com algum atendimento sem envio. Lista na aba "Guias várias sessões".` },
+      { ponto: 'Números de guia repetidos entre pacientes', qtd: gr.total, valor: '', detalhe: gr.completo ? 'Lista na aba "Guias repetidas".' : 'Processe a auditoria de novo para ter a lista.' },
+      { ponto: 'Faltas', qtd: fz.faltas, valor: '', detalhe: `${PCT.format(fz.taxa)}% dos ${count(fz.lancamentos)} lançamentos do caixa são faltas ou cancelamentos. Por médico na aba "Faltas por médico".` },
+      { ponto: 'Cancelamentos', qtd: fz.cancelamentos, valor: '', detalhe: '' },
+    ], 'Padrões que a comparação Produção × Repasse não mostra. "Lançado por" = Editor financeiro do Fechamento de Caixa.');
+    // ── Guias de várias sessões ──
+    const md = m.cruzamento?.guiasMultiDia?.itens || [];
+    if (md.length) {
+      const ENVIO = { total: 'Enviada', parcial: 'Enviada em parte', nenhum: 'Não enviada' };
+      tabelaSimples(wb, 'Guias várias sessões', X.blue, m.referencia, [
+        { header: 'Convênio', key: 'convenio', width: 26 },
+        { header: 'Guia', key: 'guia', width: 16 },
+        { header: 'Paciente', key: 'paciente', width: 30, bold: true },
+        { header: 'Datas', key: 'nDatas', width: 8, fmt: FMT_INT },
+        { header: 'Envio', key: 'envio', width: 16 },
+        { header: 'Pessoas que lançaram', key: 'nLancadores', width: 12, fmt: FMT_INT },
+        { header: 'Sessões (data · médico · envio · lançado por)', key: 'sessoes', width: 110 },
+      ], md.map((g) => ({
+        convenio: g.convenio, guia: g.guia, paciente: titleCase(g.paciente), nDatas: g.nDatas, envio: ENVIO[g.envio] || g.envio, nLancadores: g.nLancadores,
+        sessoes: g.atendimentos.map((a) => `${a.data} · ${titleCase(a.medico)} · ${a.enviado ? 'enviado' : 'NÃO enviado'}${a.lancadoPor?.length ? ` · ${nomesLancadores(a.lancadoPor)}` : ''}`).join(' | '),
+      })), 'A mesma guia atendida em datas diferentes (terapias, séries). Primeiro as que têm parte sem envio.');
+    }
+    // ── Guias repetidas ──
+    if (gr.itens.length) {
+      tabelaSimples(wb, 'Guias repetidas', X.orange, m.referencia, [
+        { header: 'Convênio', key: 'convenio', width: 26 },
+        { header: 'Guia', key: 'guia', width: 16, bold: true },
+        { header: 'Pacientes', key: 'nPacientes', width: 10, fmt: FMT_INT },
+        { header: 'Nomes', key: 'pacientes', width: 60 },
+        { header: 'Datas', key: 'datas', width: 40 },
+        { header: 'Atendimentos', key: 'nAtendimentos', width: 12, fmt: FMT_INT },
+      ], gr.itens.map((g) => ({
+        convenio: g.convenio, guia: g.guia, nPacientes: g.nPacientes, pacientes: g.pacientes.map(titleCase).join(', '), datas: g.datas.join(', '), nAtendimentos: g.nAtendimentos,
+      })), `Mesmo número de guia no mesmo convênio em pacientes diferentes: pode ser erro de digitação no cadastro.${gr.total > gr.itens.length ? ` Aqui estão ${count(gr.itens.length)} de ${count(gr.total)}.` : ''}`);
+    }
+    // ── Faltas por médico ──
+    if (fz.porMedico?.length) {
+      tabelaSimples(wb, 'Faltas por médico', X.navy, m.referencia, [
+        { header: 'Médico (executante)', key: 'nome', width: 34, bold: true },
+        { header: 'Lançamentos no caixa', key: 'lancamentos', width: 14, fmt: FMT_INT },
+        { header: 'Faltas', key: 'faltas', width: 10, fmt: FMT_INT, total: true },
+        { header: 'Cancelamentos', key: 'cancelamentos', width: 14, fmt: FMT_INT, total: true },
+        { header: 'Taxa', key: 'taxa', width: 10, fmt: FMT_PCT },
+      ], fz.porMedico.map((x) => ({ nome: titleCase(x.nome), lancamentos: x.lancamentos, faltas: x.faltas, cancelamentos: x.cancelamentos, taxa: x.taxa / 100 })),
+      'Executante do Fechamento de Caixa. Taxa = (faltas + cancelamentos) ÷ lançamentos do médico no caixa. Faltas e cancelamentos por quem lançou estão na aba "Quem lançou".');
+    }
   }
 
   return wb;
