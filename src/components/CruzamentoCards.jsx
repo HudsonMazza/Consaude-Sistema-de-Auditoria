@@ -5,7 +5,7 @@
 // "responsável pela guia" de propósito — o relatório não mostra quem ficou fisicamente com ela.
 import React, { useEffect, useState } from 'react';
 import {
-  Card, Count, Badge, DataTable, Pagination, SearchField, FilterChips, Callout, Accordion, StatStrip, Icon,
+  Card, Count, Badge, DataTable, Pagination, SearchField, FilterChips, Callout, Accordion, StatStrip, Icon, Avatar,
   sortRows, formatBRL, formatNumber, formatPercent, titleCase, useViewport,
 } from './ds/index.js';
 import { TIPOS_LANCADOR, FAIXAS_GUIA } from '../lib/cruzamento.js';
@@ -37,6 +37,103 @@ export function LancadoPor({ itens = [], confianca, compact = false }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** Selo de confiança do casamento atendimento × Fechamento de Caixa. */
+const CONFIANCA_SELO = {
+  exata: { tone: 'success', icon: 'circle-check', label: 'Confirmado no Caixa', title: 'Paciente, data e valor batem com o Fechamento de Caixa.' },
+  provavel: { tone: 'warning', icon: 'circle-help', label: 'Provável', title: CONFIANCA_TXT.provavel },
+  ambigua: { tone: 'outline', icon: 'users', label: 'Um dos dois', title: CONFIANCA_TXT.ambigua },
+};
+
+/** Atendimentos de um médico já cruzados com o Caixa (fora "sem_caixa" e auditorias antigas sem o campo). */
+export const temCaixaNosAtendimentos = (detalhes = []) => detalhes.some((d) => (d.atendimentos || []).some((a) => a.confianca && a.confianca !== 'sem_caixa'));
+
+/** Linha "Lançado por" dentro do atendimento, no painel do médico: avatar + nome + papel + selo de confiança. */
+export function LancadoPorLinha({ atendimento: a }) {
+  if (!a.confianca || a.confianca === 'sem_caixa') return null;
+  if (a.confianca === 'sem_codigo') {
+    return <div className="cs-quem cs-quem--vazio"><Icon name="circle-dashed" /><span>Sem código de atendimento: não dá para cruzar com o Caixa.</span></div>;
+  }
+  const itens = a.lancadoPor || [];
+  if (!itens.length) {
+    return <div className="cs-quem cs-quem--vazio" title={CONFIANCA_TXT.sem}><Icon name="user-x" /><span>Ninguém lançou este atendimento no Fechamento de Caixa.</span></div>;
+  }
+  const selo = CONFIANCA_SELO[a.confianca];
+  return (
+    <div className="cs-quem">
+      <span className="cs-quem__label">Lançado por</span>
+      <span className="cs-quem__pessoas">
+        {itens.map((l) => (
+          <span key={l.nome} className="cs-quem__pessoa">
+            <Avatar name={l.nome} size="sm" />
+            <span className="cs-quem__txt">
+              <b>{titleCase(l.nome)}</b>
+              <small>{TIPOS_LANCADOR[l.tipo] || 'Atendente'}{l.faturamento ? ' · também faturamento' : ''}</small>
+            </span>
+          </span>
+        ))}
+      </span>
+      {selo && <Badge tone={selo.tone} icon={selo.icon} size="sm" title={selo.title}>{selo.label}</Badge>}
+    </div>
+  );
+}
+
+/**
+ * Resumo no painel do médico: quem lançou os atendimentos divergentes dele (Fechamento de Caixa).
+ * Sem o Caixa, mostra o que falta enviar, para a diferença entre auditar com e sem o relatório ficar visível.
+ */
+export function ResumoLancadoresMedico({ detalhes = [] }) {
+  const atends = detalhes.flatMap((d) => d.atendimentos || []);
+  if (!atends.length) return null;
+  if (!temCaixaNosAtendimentos(detalhes)) {
+    return (
+      <div className="cs-quemres cs-quemres--off">
+        <Icon name="user-check" />
+        <div>
+          <b>Quem lançou cada atendimento?</b>
+          <span>Envie o Fechamento de Caixa diário na próxima auditoria para ver aqui a atendente responsável por cada divergência.</span>
+        </div>
+      </div>
+    );
+  }
+  const pessoas = new Map();
+  let semRegistro = 0;
+  for (const a of atends) {
+    const itens = a.lancadoPor || [];
+    if (!itens.length) { semRegistro++; continue; }
+    for (const l of itens) {
+      const p = pessoas.get(l.nome) || { ...l, qtd: 0, valor: 0 };
+      p.qtd += 1 / itens.length;
+      p.valor += Math.abs((a.repasse || 0) - (a.producao || 0)) / itens.length;
+      pessoas.set(l.nome, p);
+    }
+  }
+  const lista = [...pessoas.values()].sort((x, y) => y.qtd - x.qtd || y.valor - x.valor);
+  const identificados = atends.length - semRegistro;
+  return (
+    <section className="cs-quemres" aria-label="Quem lançou os atendimentos divergentes">
+      <header className="cs-quemres__head">
+        <span className="cs-quemres__icon"><Icon name="user-check" /></span>
+        <div className="cs-quemres__title">
+          <b>Quem lançou</b>
+          <span>{formatNumber(identificados)} de {plural(atends.length, 'atendimento', 'atendimentos')} com responsável no Fechamento de Caixa</span>
+        </div>
+      </header>
+      {lista.length > 0 && (
+        <ul className="cs-quemres__list">
+          {lista.map((p) => (
+            <li key={p.nome}>
+              <Avatar name={p.nome} size="md" />
+              <span className="cs-quemres__who"><b>{titleCase(p.nome)}</b><small>{TIPOS_LANCADOR[p.tipo] || 'Atendente'}</small></span>
+              <span className="cs-quemres__n"><b>{plural(Math.round(p.qtd * 10) / 10, 'atendimento', 'atendimentos')}</b><small>{formatBRL(p.valor)} em diferenças</small></span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {semRegistro > 0 && <p className="cs-quemres__foot">{plural(semRegistro, 'atendimento sem registro', 'atendimentos sem registro')} no Caixa.</p>}
+    </section>
   );
 }
 

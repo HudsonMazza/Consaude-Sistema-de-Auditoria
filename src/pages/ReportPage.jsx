@@ -10,7 +10,7 @@ import {
 import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
 import { useToast } from '../components/Toaster.jsx';
 import AuditFilesCard from '../components/AuditFilesCard.jsx';
-import { GuiasNaoEnviadasCard, RankingLancadoresCard, GuiasMultiDiaCard, LancadoPor } from '../components/CruzamentoCards.jsx';
+import { GuiasNaoEnviadasCard, RankingLancadoresCard, GuiasMultiDiaCard, LancadoPorLinha, ResumoLancadoresMedico } from '../components/CruzamentoCards.jsx';
 
 const COPY_FAIL = { tone: 'error', title: 'Não foi possível copiar', text: 'O navegador bloqueou a área de transferência. Selecione o texto e copie manualmente.' };
 
@@ -407,8 +407,9 @@ function DoctorDrawer({ medico, status, onStatus, saveLine, position, total, onP
           {Object.entries(freq).map(([tipo, qtd]) => <Badge key={tipo} tone="outline" icon="tag" size="sm">{tipo} ({qtd})</Badge>)}
         </div>
       )}
+      <ResumoLancadoresMedico detalhes={detalhes} />
       <div className="cs-stack" style={{ gap: 12 }}>
-        <h3 className="cs-card__title" style={{ fontSize: 14, lineHeight: '20px' }}>Itens por paciente {detalhes.length > 0 && <Count>{detalhes.length}</Count>}</h3>
+        <h3 className="cs-card__title" style={{ fontSize: 15, lineHeight: '22px' }}>Itens por paciente {detalhes.length > 0 && <Count>{detalhes.length}</Count>}</h3>
         {showRecon && (
           <p className="cs-recon">Itens por paciente somam <b>{formatBRL(itemsSum, { signed: true })}</b>; diferença sem detalhe: <b>{formatBRL(gap, { signed: true })}</b>.</p>
         )}
@@ -417,40 +418,50 @@ function DoctorDrawer({ medico, status, onStatus, saveLine, position, total, onP
             Esta auditoria não tem itens por paciente. Isso acontece quando a comparação por paciente está desligada ou quando as planilhas não têm coluna de paciente.
           </EmptyState>
         ) : (
-          <ul className="cs-plist">
+          <ul className="cs-pcards">
             {detalhes.map((detail, index) => {
               const d = signedPatientDiff(detail);
+              // Atendimentos com diferenças que se anulam: o paciente não tem direção (laranja é só "Repasse maior").
+              const zero = Math.round(d * 100) === 0;
+              const dir = zero ? 'zero' : d > 0 ? 'rep' : 'prod';
+              const nAt = detail.atendimentos?.length || 0;
               return (
-                <li className="cs-prow" key={index}>
-                  <span className="cs-prow__name cs-truncate" title={detail.paciente}>{titleCase(detail.paciente)}<span className="cs-faint" style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 400 }}>{detail.tipo}</span></span>
-                  <IconButton icon="copy" size="sm" label={`Copiar item de ${titleCase(detail.paciente)}`}
-                    onClick={() => copyText(textoItem(detail)).then(onCopied)} />
-                  <div className="cs-prow__vals">
-                    <span>Produção<b>{brlToNumber(detail.producao) ? detail.producao : '—'}</b></span>
-                    <span>Repasse<b>{brlToNumber(detail.repasse) ? detail.repasse : '—'}</b></span>
-                    <span>Diferença<b>{formatBRL(d, { signed: true })}</b></span>
+                <li className={`cs-pcard cs-pcard--${dir}`} key={index}>
+                  <div className="cs-pcard__head">
+                    <div className="cs-pcard__who">
+                      <span className="cs-pcard__name" title={detail.paciente}>{titleCase(detail.paciente)}</span>
+                      <span className="cs-pcard__tipo">{detail.tipo}{nAt > 1 ? ` · ${formatNumber(nAt)} atendimentos` : ''}</span>
+                    </div>
+                    <div className="cs-pcard__diff">
+                      <span className="cs-pcard__value">{formatBRL(d, { signed: true })}</span>
+                      {zero
+                        ? <Badge tone="muted" size="sm" title="As diferenças dos atendimentos deste paciente se compensam no total">Diferenças se anulam</Badge>
+                        : <DirectionTag direction={dir} short={compact} plain />}
+                    </div>
+                    <IconButton icon="copy" size="sm" label={`Copiar item de ${titleCase(detail.paciente)}`}
+                      onClick={() => copyText(textoItem(detail)).then(onCopied)} />
                   </div>
-                  <div className="cs-prow__tags">
-                    {/* Atendimentos com diferenças que se anulam: o paciente não tem direção (laranja é só "Repasse maior"). */}
-                    {Math.round(d * 100) === 0
-                      ? <Badge tone="muted" size="sm" title="As diferenças dos atendimentos deste paciente se compensam no total">Diferenças se anulam</Badge>
-                      : <DirectionTag direction={d > 0 ? 'rep' : 'prod'} short={compact} />}
+                  <div className="cs-pcard__vals">
+                    <span><small>Produção</small><b>{brlToNumber(detail.producao) ? detail.producao : '—'}</b></span>
+                    <Icon name="arrow-right" className="cs-pcard__arrow" />
+                    <span><small>Repasse</small><b>{brlToNumber(detail.repasse) ? detail.repasse : '—'}</b></span>
                   </div>
-                  {detail.atendimentos?.length > 0 && (
-                    <ul className="cs-atend-list cs-prow__atend" aria-label={`Atendimentos de ${titleCase(detail.paciente)}`}>
-                      {detail.atendimentos.map((a) => (
-                        <li key={a.codigo} className="cs-atend">
-                          <span className="cs-atend__head">
-                            <b>{a.data}</b>
-                            <span className="cs-truncate" title={a.procedimentos?.join(', ')}>{a.procedimentos?.[0] || 'Atendimento'}</span>
-                            <span className="cs-atend__val">{formatBRL(a.repasse - a.producao, { signed: true })}</span>
-                          </span>
-                          <span className="cs-atend__why">{a.motivoTexto}{a.forma && a.motivo !== 'AUSENTE_REPASSE_PENDENTE' ? ` · ${a.forma}` : ''}</span>
-                          {a.confianca && a.confianca !== 'sem_caixa' && a.confianca !== 'sem_codigo' && (
-                            <span className="cs-atend__by">Lançado por <LancadoPor itens={a.lancadoPor} confianca={a.confianca} compact /></span>
-                          )}
-                        </li>
-                      ))}
+                  {nAt > 0 && (
+                    <ul className="cs-atends" aria-label={`Atendimentos de ${titleCase(detail.paciente)}`}>
+                      {detail.atendimentos.map((a) => {
+                        const ad = a.repasse - a.producao;
+                        return (
+                          <li key={a.codigo} className="cs-atendcard">
+                            <div className="cs-atendcard__head">
+                              <span className="cs-atendcard__date"><Icon name="calendar" />{a.data}</span>
+                              <span className="cs-atendcard__proc" title={a.procedimentos?.join(', ')}>{a.procedimentos?.[0] || 'Atendimento'}</span>
+                              <span className={`cs-atendcard__val cs-atendcard__val--${Math.round(ad * 100) === 0 ? 'zero' : ad > 0 ? 'rep' : 'prod'}`}>{formatBRL(ad, { signed: true })}</span>
+                            </div>
+                            <p className="cs-atendcard__why">{a.motivoTexto}{a.forma && a.motivo !== 'AUSENTE_REPASSE_PENDENTE' ? ` · ${a.forma}` : ''}</p>
+                            <LancadoPorLinha atendimento={a} />
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </li>

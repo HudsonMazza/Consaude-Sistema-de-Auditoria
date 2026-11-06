@@ -114,7 +114,6 @@ button, input, select, textarea { font-family: inherit; }
 .cs-recon b { color: var(--ink-2); font-weight: 600; }
 /* Atendimentos de um paciente (motivo e quem lançou) — no drawer do médico e nas guias usadas em vários dias. */
 .cs-atend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.cs-prow__atend { grid-column: 1 / -1; padding-top: var(--space-2); border-top: 1px dashed var(--line); }
 .cs-atend { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 16px; color: var(--ink-3); min-width: 0; }
 .cs-atend__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--ink-2); }
 .cs-atend__head b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
@@ -125,6 +124,77 @@ button, input, select, textarea { font-family: inherit; }
 .cs-atend__by .cs-cell-main__title { font-size: 12px; line-height: 16px; color: var(--ink-2); }
 /* "Lançado por" nas tabelas: nome numa linha só (a coluna não espreme o nome em várias linhas). */
 .cs-lancado .cs-cell-main__title { white-space: nowrap; }
+
+/* ───── Itens por paciente (drawer do médico) ─────
+   Um card por paciente: barra lateral e valor na cor da direção, Produção → Repasse e os atendimentos como blocos
+   próprios, cada um com quem lançou (Fechamento de Caixa) em destaque. */
+.cs-pcards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.cs-pcard { --_dir: var(--ink-3); --_dir-soft: var(--surface-2); position: relative; display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4) calc(var(--space-4) + 4px); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.cs-pcard::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--_dir); }
+.cs-pcard--rep { --_dir: var(--dir-rep); --_dir-soft: var(--dir-rep-soft); }
+.cs-pcard--prod { --_dir: var(--dir-prod); --_dir-soft: var(--dir-prod-soft); }
+.cs-pcard__head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: start; gap: var(--space-3); }
+.cs-pcard__who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cs-pcard__name { font: 600 15px/22px var(--font-sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-pcard__tipo { font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.cs-pcard__diff { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cs-pcard__value { font: 650 17px/24px var(--font-sans); color: var(--_dir); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-pcard--zero .cs-pcard__value { color: var(--ink-2); }
+.cs-pcard__diff .cs-dir { height: 18px; }
+.cs-pcard__vals { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.cs-pcard__vals > span { display: flex; flex-direction: column; min-width: 0; }
+.cs-pcard__vals small { font-size: 11px; line-height: 14px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.cs-pcard__vals b { font: 600 14px/20px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cs-pcard__arrow { color: var(--ink-4, var(--ink-3)); width: 16px; height: 16px; flex: none; }
+
+.cs-atends { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.cs-atendcard { display: flex; flex-direction: column; gap: 6px; padding: var(--space-3); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--line); min-width: 0; }
+.cs-atendcard__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cs-atendcard__date { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 22px; padding: 0 8px; border-radius: var(--radius-full);
+  background: var(--surface-2); font: 600 12px/16px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cs-atendcard__date .cs-icon, .cs-atendcard__date svg { width: 12px; height: 12px; color: var(--ink-3); }
+.cs-atendcard__proc { flex: 1 1 auto; min-width: 0; font: 500 13px/18px var(--font-sans); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-atendcard__val { flex: none; font: 600 13px/18px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.cs-atendcard__val--rep { color: var(--dir-rep); }
+.cs-atendcard__val--prod { color: var(--dir-prod); }
+.cs-atendcard__why { margin: 0; font-size: 12px; line-height: 17px; color: var(--ink-3); }
+
+/* Quem lançou o atendimento (Fechamento de Caixa). */
+.cs-quem { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-top: 2px; padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); background: var(--accent-soft); }
+.cs-quem__label { font: 600 11px/14px var(--font-sans); text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-text); }
+.cs-quem__pessoas { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); flex: 1 1 auto; min-width: 0; }
+.cs-quem__pessoa { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cs-quem__txt { display: flex; flex-direction: column; min-width: 0; }
+.cs-quem__txt b { font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.cs-quem__txt small { font-size: 11px; line-height: 14px; color: var(--ink-3); }
+.cs-quem--vazio { background: var(--surface-2); color: var(--ink-3); font-size: 12px; line-height: 16px; flex-wrap: nowrap; }
+.cs-quem--vazio svg { width: 14px; height: 14px; flex: none; }
+
+/* Resumo "Quem lançou" do médico, acima dos itens. */
+.cs-quemres { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-md);
+  background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.cs-quemres__head { display: flex; align-items: center; gap: var(--space-3); }
+.cs-quemres__icon { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: var(--radius-full); background: var(--accent-fill); color: #fff; }
+.cs-quemres__icon svg { width: 16px; height: 16px; }
+.cs-quemres__title { display: flex; flex-direction: column; min-width: 0; }
+.cs-quemres__title b { font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.cs-quemres__title span { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.cs-quemres__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cs-quemres__list li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface); }
+.cs-quemres__who, .cs-quemres__n { display: flex; flex-direction: column; min-width: 0; }
+.cs-quemres__who { flex: 1 1 auto; }
+.cs-quemres__n { align-items: flex-end; text-align: right; flex: none; }
+.cs-quemres__who b, .cs-quemres__n b { font: 600 13px/18px var(--font-sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cs-quemres__who small, .cs-quemres__n small { font-size: 11px; line-height: 14px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cs-quemres__foot { margin: 0; font-size: 12px; line-height: 16px; color: var(--ink-2); }
+.cs-quemres--off { flex-direction: row; align-items: flex-start; gap: var(--space-3); background: transparent; box-shadow: none; border: 1px dashed var(--line-strong, var(--line)); }
+.cs-quemres--off > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--ink-3); }
+.cs-quemres--off div { display: flex; flex-direction: column; gap: 2px; }
+.cs-quemres--off b { font: 600 13px/18px var(--font-sans); color: var(--ink); }
+.cs-quemres--off span { font-size: 12px; line-height: 17px; color: var(--ink-3); }
 /* Notas de rodapé dos cards do cruzamento (critérios e o que ficou de fora). */
 .cs-card-note { display: flex; flex-direction: column; gap: 6px; padding: var(--space-3) var(--space-5) var(--space-4); border-top: 1px solid var(--line); }
 .cs-card-note p { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--ink-3); }
