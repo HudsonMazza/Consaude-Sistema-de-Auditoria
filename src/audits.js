@@ -134,12 +134,26 @@ export async function salvarArquivosAuditoria(auditId, arquivos, criadoPor) {
   return { salvos, falhas };
 }
 
-/** Metadados dos arquivos guardados na auditoria: { prod?: {...}, rep?: {...} } (só os que existem). Lança em erro de rede/permissão. */
+/**
+ * Metadados de um arquivo da auditoria, ou null se não existe. As regras publicadas antes do Fechamento de Caixa
+ * negam a leitura de documento inexistente para quem não é admin (permission-denied): para essa chave, é "não existe".
+ */
+async function lerMetaArquivo(auditId, chave) {
+  try {
+    const snap = await getDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave));
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    if (e?.code === "permission-denied") return null;
+    throw e;
+  }
+}
+
+/** Metadados dos arquivos guardados na auditoria: { prod?: {...}, rep?: {...}, caixa?: {...} } (só os que existem). Lança em erro de rede. */
 export async function listarArquivosAuditoria(auditId) {
   const out = {};
   await Promise.all(Object.keys(ARQUIVOS_AUDITORIA).map(async (chave) => {
-    const snap = await getDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave));
-    if (snap.exists()) out[chave] = snap.data();
+    const meta = await lerMetaArquivo(auditId, chave);
+    if (meta) out[chave] = meta;
   }));
   return out;
 }
@@ -163,11 +177,10 @@ export async function baixarArquivoAuditoria(auditId, chave, meta) {
 /** Exclui a auditoria junto com os arquivos guardados (o Firestore não apaga subcoleções sozinho). */
 export async function excluirAuditoria(auditId) {
   for (const chave of Object.keys(ARQUIVOS_AUDITORIA)) {
-    const metaRef = doc(db, AUDITS_COL, auditId, ARQ_COL, chave);
-    const snap = await getDoc(metaRef);
-    if (!snap.exists()) continue;
-    await apagarPartes(auditId, chave, snap.data().partes || 0);
-    await deleteDoc(metaRef);
+    const meta = await lerMetaArquivo(auditId, chave);
+    if (!meta) continue;
+    await apagarPartes(auditId, chave, meta.partes || 0);
+    await deleteDoc(doc(db, AUDITS_COL, auditId, ARQ_COL, chave));
   }
   return deleteDoc(doc(db, AUDITS_COL, auditId));
 }

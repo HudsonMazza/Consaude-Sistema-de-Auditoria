@@ -2,7 +2,7 @@
 // tema (cs-theme, src/lib/theme.js) e preferências de auditoria/exportação (cs_audit_cfg, src/lib/preferences.js).
 // O sistema atende uma única clínica, então não há mais "Identificação da clínica".
 import React, { useEffect, useState } from 'react';
-import { getPreferences, savePreferences, MAX_TOLERANCE } from '../lib/preferences.js';
+import { getPreferences, savePreferences, parseConvenios, MAX_TOLERANCE, DEFAULT_CONVENIOS_MEDICO } from '../lib/preferences.js';
 import { getThemePreference, setThemePreference, onThemeChange } from '../lib/theme.js';
 import {
   Button, Card, SettingsSection, TextField, CurrencyField, SegmentedControl, Checkbox, Callout, ActionBar, PageHeader,
@@ -23,6 +23,8 @@ function SegmentedField({ label, help, ...props }) {
 export default function SettingsPage({ currentUser, onDirtyChange }) {
   const toast = useToast();
   const [prefs, setPrefs] = useState(getPreferences);
+  // Texto livre enquanto edita (vírgulas e espaços no fim não somem); vira lista ao salvar.
+  const [conveniosTxt, setConveniosTxt] = useState(() => getPreferences().conveniosMedico.join(', '));
   const [theme, setThemeField] = useState(getThemePreference);
   const [themeTouched, setThemeTouched] = useState(false);
   const [error, setError] = useState('');
@@ -59,9 +61,10 @@ export default function SettingsPage({ currentUser, onDirtyChange }) {
       return;
     }
     try {
-      const saved = savePreferences(prefs);
+      const saved = savePreferences({ ...prefs, conveniosMedico: parseConvenios(conveniosTxt) });
       setThemePreference(theme);
       setPrefs(saved);
+      setConveniosTxt(saved.conveniosMedico.join(', '));
       setThemeTouched(false);
       setDirty(false);
       toast({ tone: 'success', title: 'Configurações salvas.' });
@@ -105,6 +108,13 @@ export default function SettingsPage({ currentUser, onDirtyChange }) {
               <Checkbox label="Gerar análise inteligente" checked={prefs.novaAuditoria.ia} onChange={toggle('novaAuditoria', 'ia')}
                 description="Cria os pontos de atenção exibidos no relatório." />
             </div>
+          </SettingsSection>
+
+          <SettingsSection title="Guias de convênio" description="Usado na lista de guias não enviadas ao faturamento (relatórios do Sistema Amigo).">
+            <TextField className="cs-full" label="Convênios faturados pelo próprio médico" optional prefixIcon="building-2" maxLength={2000}
+              value={conveniosTxt} placeholder="Nenhum: todas as guias entram na lista"
+              help={`Separe por vírgula. Basta o começo do nome: “UNIMED DR.” cobre “UNIMED DR. BRENO”. As guias desses convênios não passam pelo faturamento da clínica e ficam fora da lista. Padrão: ${DEFAULT_CONVENIOS_MEDICO.join(', ')}. Vale para novas auditorias.`}
+              onChange={(event) => { setConveniosTxt(event.target.value); setDirty(true); }} />
           </SettingsSection>
 
           <SettingsSection title="Exportação" description="O que entra nos arquivos PDF e Excel exportados.">

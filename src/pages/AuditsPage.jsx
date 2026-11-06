@@ -240,14 +240,21 @@ function ColumnMapper({ headers, detected, chosen, onChoose, open, onToggle, for
   );
 }
 
-function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha = {}, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits, heads1 = [], heads2 = [], colMap = {}, chooseColumn }) {
+function NewAudit({ file1, file2, file3 = null, setFile1, setFile2, setFile3, rows3 = null, cols3 = null, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha = {}, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits, heads1 = [], heads2 = [], colMap = {}, chooseColumn }) {
   const { compact } = useViewport();
   // Arquivos aceitos, mas que não ficaram guardados no armazenamento (a auditoria roda normalmente).
   const semCopia = [file1 && r2Falha.prod && 'Produção', file2 && r2Falha.rep && 'Repasse'].filter(Boolean);
   const [mapOpen, setMapOpen] = useState({ prod: false, rep: false });
   // Um arquivo com erro de validação precisa ser trocado antes de processar de novo.
-  const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length);
-  const reading = (file1 && rows1 == null) || (file2 && rows2 == null);
+  const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length || (file3 && uploadError?.caixa?.length));
+  const reading = (file1 && rows1 == null) || (file2 && rows2 == null) || (file3 && rows3 == null);
+  // Colunas do Fechamento de Caixa usadas no cruzamento (as que faltam aparecem marcadas)
+  const caixaCols = cols3 ? [
+    { label: 'Paciente', ok: Boolean(cols3.pacienteCol) },
+    { label: 'Data do atendimento', ok: Boolean(cols3.dataCol) },
+    { label: 'Lançado por (Editor financeiro)', ok: Boolean(cols3.atendenteCol) },
+    { label: 'Executante', ok: Boolean(cols3.executanteCol) },
+  ] : null;
   const canStart = file1 && file2 && !hasFileErrors && !reading;
   const selectedCount = Number(Boolean(file1)) + Number(Boolean(file2));
   const cards = [
@@ -295,6 +302,17 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
             </Dropzone>
           ))}
         </div>
+        {setFile3 && (
+          <Dropzone step={3} title="Fechamento de Caixa (opcional)" invalid={Boolean(file3 && uploadError?.caixa?.length)}
+            subtitle="Mostra quem lançou cada atendimento divergente e cada guia não enviada. Relatório “Fechamento de caixa diário” do Sistema Amigo."
+            reading={Boolean(file3) && rows3 == null && !uploadError?.caixa?.length}
+            file={file3 ? { name: file3.name, size: file3.size, rows: rows3 != null && rows3 >= 0 ? rows3 : null, columns: caixaCols } : null}
+            onFile={(f) => handleFileSelect(f, setFile3, 'caixa')}
+            onReplace={(f) => handleFileSelect(f, setFile3, 'caixa')}
+            onRemove={() => setFile3(null)}>
+            {file3 && <FileErrors errors={uploadError?.caixa} />}
+          </Dropzone>
+        )}
         <Card>
           <TextField label="Referência da auditoria" optional value={periodoAuditoria} prefixIcon="calendar"
             onChange={(event) => setPeriodoAuditoria(event.target.value)}
@@ -333,6 +351,7 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
           })}
         </ol>
         <Callout tone="info" title="Formatos aceitos">.xlsx, .xls ou .csv com colunas de médico, paciente e valor. A primeira linha deve ser o cabeçalho. Limite de 20 MB por arquivo.</Callout>
+        <Callout tone="neutral" icon="user-check" title="Quem lançou cada atendimento">Envie também o Fechamento de Caixa do mesmo período para ver, em cada divergência e em cada guia não enviada, quem registrou o atendimento.</Callout>
       </Card>
       <div className="cs-span-12">
         <ActionBar icon={hasFileErrors ? 'circle-alert' : canStart ? 'circle-check' : 'info'}

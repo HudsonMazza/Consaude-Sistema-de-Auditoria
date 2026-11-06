@@ -20,13 +20,16 @@ import {
   parseExcel, extractReferencia, detectColumns, originalNames, rowsWithoutName, validateFile, groupBy, sumVals, brl, comparePatients, generateInsights,
   sheetHeaders, mergeColumns, excluirPix,
 } from "./lib/engine.js";
+import {
+  prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, validateCaixa,
+} from "./lib/cruzamento.js";
 // Exportações e relatório IA carregam sob demanda (as funções já eram assíncronas).
 const exportExcel = (...a) => import("./lib/exporters.js").then((m) => m.exportExcel(...a));
 const exportPDF   = (...a) => import("./lib/exporters.js").then((m) => m.exportPDF(...a));
 const generateAIReport = (...a) => import("./lib/aiReport.js").then((m) => m.generateAIReport(...a));
 import { openReport } from "./lib/reportViewer.js";
 import { uploadSpreadsheet } from "./lib/r2Upload.js";
-import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions } from "./lib/preferences.js";
+import { getPreferences, getNewAuditDefaults, getTolerance, getExportOptions, getConveniosMedico } from "./lib/preferences.js";
 import { AiProgressModal, Modal, Button, Card, Skeleton } from "./components/ds/index.js";
 import AppLayout from "./components/AppLayout.jsx";
 import { ToastProvider, useToast } from "./components/Toaster.jsx";
@@ -67,8 +70,10 @@ export default function App() {
   const [auditView,     setAuditView]     = useState("list");
   const [file1,         setFile1]         = useState(null);
   const [file2,         setFile2]         = useState(null);
-  const [r2FileIds,     setR2FileIds]     = useState({ prod: null, rep: null });
-  const [r2Falha,       setR2Falha]       = useState({ prod: false, rep: false });
+  // Fechamento de Caixa (opcional): mostra quem lançou cada atendimento.
+  const [file3,         setFile3]         = useState(null);
+  const [r2FileIds,     setR2FileIds]     = useState({ prod: null, rep: null, caixa: null });
+  const [r2Falha,       setR2Falha]       = useState({ prod: false, rep: false, caixa: false });
   const [processing,    setProcessing]    = useState(false);
   const [progress,      setProgress]      = useState(0);
   const [steps,         setSteps]         = useState([false,false,false,false,false,false]);
@@ -97,6 +102,8 @@ export default function App() {
   const [colMap,        setColMap]        = useState({ prod: null, rep: null });
   const [rows1,         setRows1]         = useState(null);
   const [rows2,         setRows2]         = useState(null);
+  const [cols3,         setCols3]         = useState(null);
+  const [rows3,         setRows3]         = useState(null);
   const [aiLoading,     setAiLoading]     = useState(false);
   const [aiHidden,      setAiHidden]      = useState(false);
   const [aiError,       setAiError]       = useState(null);
@@ -108,7 +115,7 @@ export default function App() {
   const [histWarning,   setHistWarning]   = useState(null);
   const [refDetectada, setRefDetectada] = useState({ prod: null, rep: null });
   // Cache da leitura por arquivo: { file, promise }. A auditoria sempre usa a leitura do arquivo selecionado agora.
-  const parsedCache  = useRef({ prod: null, rep: null });
+  const parsedCache  = useRef({ prod: null, rep: null, caixa: null });
 
   // Auth: a sessão é resolvida pelo Firebase. O perfil (papel admin/user) vem do
   // Firestore a cada carregamento — não há estado de autenticação no navegador
@@ -183,8 +190,9 @@ export default function App() {
     setHistorico([]);
     setFile1(null);
     setFile2(null);
-    setR2FileIds({ prod: null, rep: null });
-    setR2Falha({ prod: false, rep: false });
+    setFile3(null);
+    setR2FileIds({ prod: null, rep: null, caixa: null });
+    setR2Falha({ prod: false, rep: false, caixa: false });
     // Nada da sessão anterior passa para o próximo usuário desta aba
     statusesDirty.current = false;
     setStatuses({});
@@ -224,7 +232,7 @@ export default function App() {
 
   // Prévia ao selecionar arquivo: linhas lidas e período detectado. Resultado de uma leitura antiga
   // (arquivo trocado ou removido no meio) é ignorado.
-  const usePreview = (key, file, setCols, setRows, setHeads) => useEffect(() => {
+  const usePreview = (key, file, setCols, setRows, setHeads, caixa = false) => useEffect(() => {
     setCols(null); setRows(null); setHeads([]);
     setColMap((m) => (m[key] ? { ...m, [key]: null } : m));
     setRefDetectada((r) => ({ ...r, [key]: null }));
@@ -235,6 +243,14 @@ export default function App() {
     readRows(key, file)
       .then((rows) => {
         if (!alive) return;
+        if (caixa) {
+          // O Caixa tem colunas próprias (quem lançou, data do atendimento): avisa na hora se não for o relatório certo.
+          const cols = detectCaixaColumns(rows);
+          setCols(cols); setRows(rows.length);
+          const errs = validateCaixa(rows, cols);
+          if (errs.length) setUploadError((prev) => ({ ...prev, [key]: errs }));
+          return;
+        }
         setCols(detectColumns(rows)); setRows(rows.length); setHeads(sheetHeaders(rows));
         setRefDetectada((r) => ({ ...r, [key]: extractReferencia(rows) }));
       })
@@ -247,6 +263,7 @@ export default function App() {
   }, [file]);
   usePreview("prod", file1, setCols1, setRows1, setHeads1);
   usePreview("rep", file2, setCols2, setRows2, setHeads2);
+  usePreview("caixa", file3, setCols3, setRows3, () => {}, true);
 
   // "Ajustar colunas": a escolha manual vale para o arquivo atual e limpa o aviso de validação dele.
   const chooseColumn = (key, patch) => {
@@ -273,7 +290,9 @@ export default function App() {
     try {
       // Etapa 1: Leitura dos arquivos (reaproveitando cache do preview quando disponível)
       step(0, 16);
-      const [prodTodas, repTodas] = await Promise.all([readRows("prod", file1), readRows("rep", file2)]);
+      const [prodTodas, repTodas, caixaRows] = await Promise.all([
+        readRows("prod", file1), readRows("rep", file2), file3 ? readRows("caixa", file3) : Promise.resolve(null),
+      ]);
       // Regra de negócio: registros pagos via PIX ficam fora de toda a análise (cruzamento, divergências, relatório).
       // Filtra antes de detectar colunas/validar; as linhas lidas (e o cache da leitura) continuam intactas.
       const prodRows = excluirPix(prodTodas);
@@ -286,11 +305,13 @@ export default function App() {
       const SO_PIX = "Todas as linhas desta planilha são pagas via PIX e ficam fora da análise. Envie um arquivo com outras formas de pagamento.";
       const prodErrors = prodRows.length === 0 && prodTodas.length > 0 ? [SO_PIX] : validateFile(prodRows, pCols);
       const repErrors  = repRows.length === 0 && repTodas.length > 0 ? [SO_PIX] : validateFile(repRows, rCols);
+      const caixaCols  = caixaRows ? detectCaixaColumns(caixaRows) : null;
+      const caixaErrors = caixaRows ? validateCaixa(caixaRows, caixaCols) : [];
       step(1, 32);
 
-      if (prodErrors.length || repErrors.length) {
+      if (prodErrors.length || repErrors.length || caixaErrors.length) {
         setProcessing(false);
-        setUploadError({ prod: prodErrors, rep: repErrors });
+        setUploadError({ prod: prodErrors, rep: repErrors, caixa: caixaErrors });
         setActivePage("upload");
         return;
       }
@@ -310,6 +331,9 @@ export default function App() {
       // Tolerância (Configurações › Preferências de auditoria) lida no início de cada nova auditoria.
       // Padrão R$ 0,01 = o mesmo limite fixo de antes da opção "ignorar diferenças".
       const threshold = configs.ignorar ? getTolerance() : 0;
+      // Relatórios do Sistema Amigo têm o Código de atendimento nas duas planilhas: o detalhe por paciente sai
+      // atendimento a atendimento, com o motivo. Sem o código, continua a comparação pelo nome do paciente.
+      const prepAtend = prepararAtendimentos(prodRows, repRows);
       const divs = [];
       for (const med of allMeds) {
         const pr   = prodPorMed[med] ?? [];
@@ -322,7 +346,8 @@ export default function App() {
         const centavos = Math.round(Math.abs(diff) * 100);
         if (centavos === 0 || centavos < Math.round(threshold * 100)) continue;
 
-        const detalhes = configs.comparaNome ? comparePatients(pr, rr, pCols, rCols) : [];
+        const detalhes = !configs.comparaNome ? []
+          : prepAtend.porCodigo ? compararAtendimentos(pr, rr, pCols, rCols, prepAtend) : comparePatients(pr, rr, pCols, rCols);
         // diff > 0 → Produção maior (médico subpago); diff < 0 → Repasse maior (possível sobrepagamento)
         divs.push({
           id:           med,
@@ -339,6 +364,19 @@ export default function App() {
         });
       }
       divs.sort((a, b) => b.diferencaRaw - a.diferencaRaw);
+
+      // Cruzamento com o Fechamento de Caixa (quem lançou) e guias de convênio não enviadas ao faturamento.
+      // Usa as linhas com PIX para casar o Caixa; as análises de valor excluem PIX. Uma falha aqui não derruba a auditoria.
+      let cruzamento = null;
+      try {
+        cruzamento = analisarCruzamento({ prodTodas, repTodas, caixaRows, caixaCols, divergencias: divs, opcoes: { conveniosMedico: getConveniosMedico() } });
+        if (caixaRows && !cruzamento?.comCaixa) {
+          setHistWarning("O Fechamento de Caixa não foi usado: a planilha de Produção não tem a coluna “Código Atendimento” do Sistema Amigo.");
+        }
+      } catch (e) {
+        console.error("Cruzamento com o Caixa falhou:", e);
+        if (caixaRows) setHistWarning("Não foi possível cruzar o Fechamento de Caixa. As divergências foram calculadas normalmente.");
+      }
       step(3, 66);
 
       await new Promise((r) => setTimeout(r, 150));
@@ -349,7 +387,7 @@ export default function App() {
       step(4, 83);
 
       // Etapa 6: Insights com IA
-      const insights = configs.ia ? generateInsights(divs, allMeds.size, valorTotal) : [];
+      const insights = configs.ia ? [...generateInsights(divs, allMeds.size, valorTotal), ...insightsCruzamento(cruzamento)] : [];
       step(5, 100);
       await new Promise((r) => setTimeout(r, 350));
 
@@ -365,14 +403,16 @@ export default function App() {
         referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || extractReferencia(repRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
         file1Name:    file1.name,
         file2Name:    file2.name,
+        ...(file3 ? { file3Name: file3.name } : {}),
         r2FileIds,
         tolerancia:   threshold,
         ...(semProd.linhas || semRep.linhas ? { linhasSemMedico: { prod: semProd, rep: semRep } } : {}),
+        ...(cruzamento ? { cruzamento } : {}),
       };
       const entry = {
         data:        new Date().toLocaleDateString("pt-BR"),
         periodo:     res.referencia,
-        arquivos:    `${file1.name} / ${file2.name}`,
+        arquivos:    [file1.name, file2.name, file3?.name].filter(Boolean).join(" / "),
         divergencias: divs.length,
         valor:       res.valorTotal,
         resultados:  res,
@@ -380,12 +420,21 @@ export default function App() {
       let auditId = null;
       try {
         auditId = await salvarAuditoria(entry, currentUser);
+        // Mês muito grande: guarda o histórico com as listas do cruzamento resumidas (a tela desta sessão continua completa).
+        if (auditId === null && cruzamento) {
+          const resumido = { ...cruzamento,
+            guiasNaoEnviadas: { ...cruzamento.guiasNaoEnviadas, itens: cruzamento.guiasNaoEnviadas.itens.slice(0, 150), truncado: cruzamento.guiasNaoEnviadas.total.n - Math.min(150, cruzamento.guiasNaoEnviadas.itens.length) },
+            guiasMultiDia: { ...cruzamento.guiasMultiDia, itens: cruzamento.guiasMultiDia.itens.slice(0, 30) } };
+          auditId = await salvarAuditoria({ ...entry, resultados: { ...res, cruzamento: resumido } }, currentUser);
+          if (auditId) setHistWarning("A auditoria foi salva com a lista de guias resumida (as 150 primeiras). Exporte o Excel agora para guardar a lista completa.");
+        }
         if (auditId === null) setHistWarning("Auditoria muito grande para salvar no histórico compartilhado — disponível apenas nesta sessão.");
         else {
-          // Guarda os arquivos originais enviados (file1/file2 são os File do usuário, não as linhas filtradas por PIX)
-          const { falhas } = await salvarArquivosAuditoria(auditId, { prod: file1, rep: file2 }, currentUser);
+          // Guarda os arquivos originais enviados (file1/file2/file3 são os File do usuário, não as linhas filtradas por PIX)
+          const { falhas } = await salvarArquivosAuditoria(auditId, { prod: file1, rep: file2, caixa: file3 }, currentUser);
           if (falhas.length) {
-            const nomes = falhas.map((f) => (f.chave === "prod" ? "Produção" : "Repasse")).join(" e ");
+            const NOME_ARQ = { prod: "Produção", rep: "Repasse", caixa: "Fechamento de Caixa" };
+            const nomes = falhas.map((f) => NOME_ARQ[f.chave] || f.chave).join(" e ");
             setHistWarning(falhas.every((f) => f.motivo === "tamanho")
               ? `A auditoria foi salva, mas o arquivo de ${nomes} é grande demais para ficar guardado nela (limite de 8 MB por arquivo).`
               : `A auditoria foi salva, mas não foi possível guardar o arquivo de ${nomes}. Ele não estará disponível para download nesta auditoria.`);
@@ -478,8 +527,9 @@ export default function App() {
     setPeriodoAuditoria('');
     setFile1(null);
     setFile2(null);
-    setR2FileIds({ prod: null, rep: null });
-    setR2Falha({ prod: false, rep: false });
+    setFile3(null);
+    setR2FileIds({ prod: null, rep: null, caixa: null });
+    setR2Falha({ prod: false, rep: false, caixa: false });
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
     flushStatuses();
@@ -552,7 +602,7 @@ export default function App() {
         ) : page === "audits-new" || page === "audits" ? (
           <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
-            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep,
+            upload={{ file1, file2, file3, setFile1, setFile2, setFile3, rows3, cols3, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep,
               heads1, heads2, colMap, chooseColumn }} />
         ) : (
           <Suspense fallback={<PageLoading />}>

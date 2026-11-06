@@ -10,6 +10,7 @@ import {
 import { signedDiff, signedPatientDiff, brlToNumber, splitDateTime, capitalize, copyText } from '../lib/display.js';
 import { useToast } from '../components/Toaster.jsx';
 import AuditFilesCard from '../components/AuditFilesCard.jsx';
+import { GuiasNaoEnviadasCard, RankingLancadoresCard, GuiasMultiDiaCard, LancadoPor } from '../components/CruzamentoCards.jsx';
 
 const COPY_FAIL = { tone: 'error', title: 'Não foi possível copiar', text: 'O navegador bloqueou a área de transferência. Selecione o texto e copie manualmente.' };
 
@@ -183,7 +184,7 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
           <h1 className="cs-pagehead__title">{capitalize(resultados.referencia) || 'Sem referência'} <ResultBadge divergences={Number(resultados.totalDivergencias) || 0} /></h1>
           <div className="cs-pagehead__meta">
             <span><Icon name="calendar" />Processada em {processed.date}{processed.time ? ` às ${processed.time}` : ''}</span>
-            <span style={{ minWidth: 0, maxWidth: '100%' }}><Icon name="file-spreadsheet" /><span className="cs-truncate" title={`${resultados.file1Name} × ${resultados.file2Name}`}>{resultados.file1Name} · {resultados.file2Name}</span></span>
+            <span style={{ minWidth: 0, maxWidth: '100%' }}><Icon name="file-spreadsheet" /><span className="cs-truncate" title={[resultados.file1Name, resultados.file2Name, resultados.file3Name].filter(Boolean).join(' × ')}>{[resultados.file1Name, resultados.file2Name, resultados.file3Name].filter(Boolean).join(' · ')}</span></span>
           </div>
         </div>
         <div className="cs-pagehead__actions">
@@ -292,6 +293,14 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
         )}
       </Card>
 
+      {resultados.cruzamento && (
+        <>
+          <GuiasNaoEnviadasCard cruzamento={resultados.cruzamento} />
+          <RankingLancadoresCard cruzamento={resultados.cruzamento} />
+          <GuiasMultiDiaCard cruzamento={resultados.cruzamento} />
+        </>
+      )}
+
       <Card title="Análise inteligente" icon="list-checks" subtitle={`Pontos de atenção identificados automaticamente · ${processed.date}${processed.time ? ' ' + processed.time : ''}`}>
         {insights.length === 0 ? (
           <EmptyState compact icon="list-checks" title="Sem análise nesta auditoria">A análise aparece aqui quando a opção “Gerar análise inteligente” está ativa no processamento.</EmptyState>
@@ -319,6 +328,16 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
       )}
     </>
   );
+}
+
+/** Texto copiado de um item por paciente (com os atendimentos e quem lançou, quando houver). */
+function textoItem(detail) {
+  const base = `Paciente: ${detail.paciente} | Produção: ${detail.producao} | Repasse: ${detail.repasse} | Diferença: ${detail.diferenca} | Tipo: ${detail.tipo}`;
+  const atend = (detail.atendimentos || []).map((a) => {
+    const por = a.lancadoPor?.length ? ` | Lançado por: ${a.lancadoPor.map((l) => titleCase(l.nome)).join(' ou ')}` : '';
+    return `  ${a.data} | ${a.semCodigo ? 'Sem código de atendimento' : `Atendimento ${a.codigo}`} | ${a.procedimentos?.[0] || ''} | ${a.motivoTexto}${por}`;
+  });
+  return [base, ...atend].join('\n');
 }
 
 function DoctorDrawer({ medico, status, onStatus, saveLine, position, total, onPrev, onNext, onClose, onCopied }) {
@@ -405,13 +424,35 @@ function DoctorDrawer({ medico, status, onStatus, saveLine, position, total, onP
                 <li className="cs-prow" key={index}>
                   <span className="cs-prow__name cs-truncate" title={detail.paciente}>{titleCase(detail.paciente)}<span className="cs-faint" style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 400 }}>{detail.tipo}</span></span>
                   <IconButton icon="copy" size="sm" label={`Copiar item de ${titleCase(detail.paciente)}`}
-                    onClick={() => copyText(`Paciente: ${detail.paciente} | Produção: ${detail.producao} | Repasse: ${detail.repasse} | Diferença: ${detail.diferenca} | Tipo: ${detail.tipo}`).then(onCopied)} />
+                    onClick={() => copyText(textoItem(detail)).then(onCopied)} />
                   <div className="cs-prow__vals">
                     <span>Produção<b>{brlToNumber(detail.producao) ? detail.producao : '—'}</b></span>
                     <span>Repasse<b>{brlToNumber(detail.repasse) ? detail.repasse : '—'}</b></span>
                     <span>Diferença<b>{formatBRL(d, { signed: true })}</b></span>
                   </div>
-                  <div className="cs-prow__tags"><DirectionTag direction={d >= 0 ? 'rep' : 'prod'} short={compact} /></div>
+                  <div className="cs-prow__tags">
+                    {/* Atendimentos com diferenças que se anulam: o paciente não tem direção (laranja é só "Repasse maior"). */}
+                    {Math.round(d * 100) === 0
+                      ? <Badge tone="muted" size="sm" title="As diferenças dos atendimentos deste paciente se compensam no total">Diferenças se anulam</Badge>
+                      : <DirectionTag direction={d > 0 ? 'rep' : 'prod'} short={compact} />}
+                  </div>
+                  {detail.atendimentos?.length > 0 && (
+                    <ul className="cs-atend-list cs-prow__atend" aria-label={`Atendimentos de ${titleCase(detail.paciente)}`}>
+                      {detail.atendimentos.map((a) => (
+                        <li key={a.codigo} className="cs-atend">
+                          <span className="cs-atend__head">
+                            <b>{a.data}</b>
+                            <span className="cs-truncate" title={a.procedimentos?.join(', ')}>{a.procedimentos?.[0] || 'Atendimento'}</span>
+                            <span className="cs-atend__val">{formatBRL(a.repasse - a.producao, { signed: true })}</span>
+                          </span>
+                          <span className="cs-atend__why">{a.motivoTexto}{a.forma && a.motivo !== 'AUSENTE_REPASSE_PENDENTE' ? ` · ${a.forma}` : ''}</span>
+                          {a.confianca && a.confianca !== 'sem_caixa' && a.confianca !== 'sem_codigo' && (
+                            <span className="cs-atend__by">Lançado por <LancadoPor itens={a.lancadoPor} confianca={a.confianca} compact /></span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}

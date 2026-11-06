@@ -112,6 +112,24 @@ button, input, select, textarea { font-family: inherit; }
 .cs-drawer__status-label { font: 500 13px/18px var(--font-sans); color: var(--ink); }
 .cs-recon { margin: 0; font-size: 12px; line-height: 16px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .cs-recon b { color: var(--ink-2); font-weight: 600; }
+/* Atendimentos de um paciente (motivo e quem lançou) — no drawer do médico e nas guias usadas em vários dias. */
+.cs-atend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.cs-prow__atend { grid-column: 1 / -1; padding-top: var(--space-2); border-top: 1px dashed var(--line); }
+.cs-atend { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 16px; color: var(--ink-3); min-width: 0; }
+.cs-atend__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--ink-2); }
+.cs-atend__head b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
+.cs-atend__head .cs-truncate { flex: 1 1 auto; min-width: 0; }
+.cs-atend__val { flex: none; margin-left: auto; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cs-atend__why { color: var(--ink-3); }
+.cs-atend__by { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; color: var(--ink-3); }
+.cs-atend__by .cs-cell-main__title { font-size: 12px; line-height: 16px; color: var(--ink-2); }
+/* "Lançado por" nas tabelas: nome numa linha só (a coluna não espreme o nome em várias linhas). */
+.cs-lancado .cs-cell-main__title { white-space: nowrap; }
+/* Notas de rodapé dos cards do cruzamento (critérios e o que ficou de fora). */
+.cs-card-note { display: flex; flex-direction: column; gap: 6px; padding: var(--space-3) var(--space-5) var(--space-4); border-top: 1px solid var(--line); }
+.cs-card-note p { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--ink-3); }
+.cs-card-note p .cs-icon { flex: none; margin-top: 1px; }
+.cs-app[data-layout="compact"] .cs-card-note { padding: var(--space-3) var(--space-4); }
 .cs-drawer__nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; }
 .cs-drawer__pos { font: 500 13px/18px var(--font-sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: center; }
 .cs-drawer__nav .cs-kbd { margin-left: 2px; }

@@ -11,6 +11,7 @@
 // mais, laranja), negativo = "Produção maior" (pago a menos, azul). Nunca vermelho/verde para direção.
 import { parseValue } from './engine.js';
 import { titleCase } from './names.js';
+import { TIPOS_LANCADOR, FAIXAS_GUIA } from './cruzamento.js';
 
 // ─── Helpers de dados (sem dependência de DOM) ────────────────────────────────
 
@@ -45,8 +46,15 @@ function splitProcessed(text) {
   return { date: date || '—', time: time.slice(0, 5) };
 }
 
+/** "Fulana" / "Fulana ou Beltrana" (quem lançou no Fechamento de Caixa); vazio quando não há. */
+function nomesLancadores(lista) {
+  return Array.isArray(lista) && lista.length ? lista.map((l) => titleCase(l.nome)).join(' ou ') : '';
+}
+const tiposLancadores = (lista) => [...new Set((lista || []).map((l) => TIPOS_LANCADOR[l.tipo] || 'Atendente'))].join(' / ');
+
 const STATUS_LABEL = { pendente: 'Pendente', revisado: 'Revisado', corrigido: 'Corrigido' };
-const DIR_LABEL = { rep: 'Repasse maior', prod: 'Produção maior' };
+// "neutro": paciente cujas diferenças por atendimento se anulam (sem direção; laranja é só "Repasse maior").
+const DIR_LABEL = { rep: 'Repasse maior', prod: 'Produção maior', neutro: 'Diferenças se anulam' };
 
 /** Nome de arquivo: ConSaude_Auditoria_<referencia>_<aaaa-mm-dd>.<ext> */
 export function exportFileName(res, ext, now = new Date()) {
@@ -98,7 +106,9 @@ export function buildReportModel(res, opts = {}) {
         const a = Number(p.diferencaRaw);
         return {
           raw: p.paciente, name: titleCase(p.paciente), producao: pp, repasse: pr, signed: s,
-          absolute: Number.isFinite(a) ? r2(a) : Math.abs(s), dir: s >= 0 ? 'rep' : 'prod', tipo: p.tipo || '—',
+          absolute: Number.isFinite(a) ? r2(a) : Math.abs(s), dir: Math.round(s * 100) === 0 ? 'neutro' : s > 0 ? 'rep' : 'prod', tipo: p.tipo || '—',
+          lancadoPor: nomesLancadores(p.lancadoPor),
+          atendimentos: Array.isArray(p.atendimentos) ? p.atendimentos : [],
         };
       }),
     };
@@ -139,6 +149,9 @@ export function buildReportModel(res, opts = {}) {
     incluirInsights: opts.incluirInsights !== false,
     incluirPacientes: opts.incluirPacientes !== false,
     hasPatientDetail: doctors.some((d) => d.items.length > 0),
+    hasLancadoPor: doctors.some((d) => d.items.some((p) => p.lancadoPor)),
+    file3Name: res?.file3Name || null,
+    cruzamento: res?.cruzamento && typeof res.cruzamento === 'object' ? res.cruzamento : null,
   };
 }
 
@@ -195,7 +208,7 @@ const C = {
   warning: [143, 90, 6],
   white: [255, 255, 255],
 };
-const DIR_COLOR = { rep: C.orangeText, prod: C.blue };
+const DIR_COLOR = { rep: C.orangeText, prod: C.blue, neutro: C.ink2 };
 const DIR_SWATCH = { rep: C.orange, prod: C.blueBar };
 const STATUS_COLOR = { pendente: C.warning, revisado: C.blue, corrigido: C.success };
 
@@ -393,6 +406,7 @@ export async function createPDF(res, opts = {}) {
   const facts = [
     ['Arquivo de produção', m.file1Name, true],
     ['Arquivo de repasse', m.file2Name, true],
+    ...(m.file3Name ? [['Fechamento de caixa', m.file3Name, true]] : []),
     ['Processada em', `${m.processed.date}${m.processed.time ? ` às ${m.processed.time}` : ''}`],
     ...(m.tolerance ? [['Tolerância aplicada', m.tolerance]] : []),
     ['Responsável', m.responsavel],
@@ -552,9 +566,16 @@ export async function createPDF(res, opts = {}) {
         },
         headStyles: { ...tableBase.headStyles, fillColor: C.white, textColor: C.ink3, fontSize: 7, cellPadding: { top: 1.8, bottom: 1.8, left: 2.4, right: 2.4 } },
         styles: { ...tableBase.styles, fontSize: 7.8, cellPadding: { top: 1.9, bottom: 1.9, left: 2.4, right: 2.4 } },
-        head: [['Paciente', { content: 'Produção', styles: R }, { content: 'Repasse', styles: R }, { content: 'Diferença', styles: R }, 'Tipo de divergência']],
-        body: d.items.map((p) => [p.name, money(p.producao), money(p.repasse), money(p.signed, { signed: true }), p.tipo]),
-        columnStyles: {
+        head: [['Paciente', { content: 'Produção', styles: R }, { content: 'Repasse', styles: R }, { content: 'Diferença', styles: R }, 'Tipo de divergência', ...(m.hasLancadoPor ? ['Lançado por'] : [])]],
+        body: d.items.map((p) => [p.name, money(p.producao), money(p.repasse), money(p.signed, { signed: true }), p.tipo, ...(m.hasLancadoPor ? [p.lancadoPor || '—'] : [])]),
+        columnStyles: m.hasLancadoPor ? {
+          0: { cellWidth: 'auto' },
+          1: { cellWidth: 22, halign: 'right' },
+          2: { cellWidth: 22, halign: 'right' },
+          3: { cellWidth: 23, halign: 'right', fontStyle: 'bold' },
+          4: { cellWidth: 40 },
+          5: { cellWidth: 36, fontSize: 7.2 },
+        } : {
           0: { cellWidth: 'auto' },
           1: { cellWidth: 25, halign: 'right' },
           2: { cellWidth: 25, halign: 'right' },
@@ -570,6 +591,85 @@ export async function createPDF(res, opts = {}) {
       });
       y = doc.lastAutoTable.finalY + 7;
     });
+  }
+
+  // ── Guias de convênio não enviadas (cruzamento) ──
+  const cz = m.cruzamento;
+  const gne = cz?.guiasNaoEnviadas;
+  if (gne) {
+    const fx = gne.faixas || {};
+    const resumo = gne.total.n
+      ? `${count(gne.total.n)} ${gne.total.n === 1 ? 'atendimento' : 'atendimentos'} de convênio sem "Quem enviou" na Produção, ${money(gne.total.valor)}. `
+        + `Atrasadas além do prazo do convênio: ${count(fx.atrasada?.n)} (${money(fx.atrasada?.valor)}); em lote sem envio: ${count(fx.em_lote?.n)}; dentro do prazo: ${count(fx.no_prazo?.n)}.`
+        + (cz.dataReferencia ? ` Dias contados até ${cz.dataReferencia}.` : '')
+        + (gne.truncado > 0 ? ` A lista abaixo mostra ${count(gne.itens?.length)} de ${count(gne.total.n)} atendimentos (auditoria salva com a lista resumida); os totais acima consideram todos.` : '')
+        + (!m.incluirPacientes ? ' A lista por paciente não entra neste PDF (opção "Incluir detalhamento por paciente" desligada); ela está no Excel.' : '')
+      : 'Todas as guias de convênio do período foram enviadas ao faturamento.';
+    // A tabela lista pacientes: segue a mesma opção do detalhamento por paciente.
+    const comTabela = m.incluirPacientes && gne.itens?.length > 0;
+    sectionTitle('Guias de convênio não enviadas', resumo, comTabela ? { newPage: true } : { need: 30 });
+    if (comTabela) {
+      autoTable(doc, {
+        ...tableBase,
+        startY: y,
+        head: [['Data', 'Paciente', 'Convênio · guia', { content: 'Valor', styles: R }, { content: 'Dias', styles: R }, 'Situação', ...(cz.comCaixa ? ['Lançado por'] : [])]],
+        body: gne.itens.map((g) => [
+          g.data, titleCase(g.paciente), `${g.convenio}${g.guias?.length ? ` · ${g.guias.join(', ')}` : ''}`, money(g.valor), g.dias != null ? count(g.dias) : '—',
+          FAIXAS_GUIA[g.faixa] || '—', ...(cz.comCaixa ? [nomesLancadores(g.lancadoPor) || 'Sem registro no Caixa'] : []),
+        ]),
+        foot: [[gne.truncado > 0 ? 'Total dos itens listados' : 'Total', '', '', { content: money(gne.itens.reduce((s, g) => s + (Number(g.valor) || 0), 0)), styles: R }, '', '', ...(cz.comCaixa ? [''] : [])]],
+        styles: { ...tableBase.styles, fontSize: 7.2 },
+        columnStyles: {
+          0: { cellWidth: 17 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 38 },
+          3: { cellWidth: 20, halign: 'right' },
+          4: { cellWidth: 10, halign: 'right' },
+          5: { cellWidth: 24 },
+          ...(cz.comCaixa ? { 6: { cellWidth: 32 } } : {}),
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === 5 && gne.itens[data.row.index]?.faixa === 'atrasada') {
+            // Laranja é reservado para "Repasse maior" (regras de dados): atraso fica em negrito no azul-marinho.
+            data.cell.styles.textColor = C.navy;
+            data.cell.styles.fontStyle = 'bold';
+          }
+        },
+      });
+      y = doc.lastAutoTable.finalY + 5;
+    }
+    if (gne.foraDoEnvio?.linhas) {
+      ensure(8);
+      font(7.5, 'normal', C.ink3);
+      doc.text(doc.splitTextToSize(`Convênios faturados pelo próprio médico ficaram de fora: ${count(gne.foraDoEnvio.linhas)} linhas (${money(gne.foraDoEnvio.valor)}).`, CW), PAGE.m, y + 1);
+      y += 7;
+    }
+  }
+
+  // ── Quem lançou (Fechamento de Caixa) ──
+  const rk = cz?.comCaixa ? (cz.ranking || []).filter((r) => r.guiasNaoEnviadas > 0 || r.divergencias > 0) : [];
+  if (rk.length) {
+    sectionTitle('Quem lançou', '"Editor financeiro" do Fechamento de Caixa: quem registrou o atendimento. Taxa = guias não enviadas ÷ guias de convênio lançadas pela pessoa. Confirme com a equipe antes de cobrar alguém pela guia.', { need: 60 });
+    autoTable(doc, {
+      ...tableBase,
+      startY: y,
+      head: [['Lançado por', 'Tipo', { content: 'Lançamentos', styles: R }, { content: 'Guias não env.', styles: R }, { content: 'Valor', styles: R }, { content: 'Taxa', styles: R }, { content: 'Divergências', styles: R }]],
+      body: rk.map((r) => [
+        titleCase(r.nome), TIPOS_LANCADOR[r.tipo] || 'Atendente', count(r.lancamentos), count(Math.round(r.guiasNaoEnviadas)), money(r.valorGuias),
+        r.taxaGuias == null ? '—' : `${PCT.format(r.taxaGuias)}%`, r.divergencias ? `${count(Math.round(r.divergencias))} · ${money(r.valorDivergencias)}` : '—',
+      ]),
+      styles: { ...tableBase.styles, fontSize: 7.5 },
+      columnStyles: {
+        0: { cellWidth: 'auto', fontStyle: 'bold' },
+        1: { cellWidth: 30, fontSize: 7 },
+        2: { cellWidth: 20, halign: 'right' },
+        3: { cellWidth: 20, halign: 'right' },
+        4: { cellWidth: 22, halign: 'right' },
+        5: { cellWidth: 14, halign: 'right' },
+        6: { cellWidth: 30, halign: 'right' },
+      },
+    });
+    y = doc.lastAutoTable.finalY + 6;
   }
 
   // ── Cabeçalho e rodapé em todas as páginas ──
@@ -621,7 +721,7 @@ const X = {
   ink: 'FF16171A', ink2: 'FF4A4E59', ink3: 'FF646978', line: 'FFE4E6EC', zebra: 'FFF6F7FA', white: 'FFFFFFFF',
   success: 'FF137535', warning: 'FF8F5A06',
 };
-const XDIR = { rep: X.orangeText, prod: X.blue };
+const XDIR = { rep: X.orangeText, prod: X.blue, neutro: X.ink2 };
 const XSTATUS = { pendente: X.warning, revisado: X.blue, corrigido: X.success };
 const FMT_MONEY = '"R$" #,##0.00;-"R$" #,##0.00;"R$" 0.00';
 const FMT_SIGNED = '+"R$" #,##0.00;-"R$" #,##0.00;"R$" 0.00';
@@ -711,6 +811,7 @@ export async function createWorkbook(res, opts = {}) {
   fact('Processada em', m.processadoEm);
   fact('Arquivo de produção', m.file1Name);
   fact('Arquivo de repasse', m.file2Name);
+  if (m.file3Name) fact('Fechamento de caixa', m.file3Name);
   if (m.tolerance) fact('Tolerância aplicada', m.tolerance);
   fact('Responsável', m.responsavel);
   fact('Gerado em', `${dateBR(m.now)} às ${timeBR(m.now)}`);
@@ -948,7 +1049,127 @@ export async function createWorkbook(res, opts = {}) {
     wi.getCell('A2').font = { name: FONT, italic: true, color: { argb: X.ink3 } };
   }
 
+  // ── Atendimentos divergentes (relatórios com Código de atendimento) ──
+  const atendRows = m.doctors.flatMap((d) => d.items.flatMap((p) => p.atendimentos.map((a) => ({
+    medico: d.name, paciente: p.name, data: a.data, codigo: a.semCodigo ? 'sem código' : a.codigo, procedimento: (a.procedimentos || []).join(', '), forma: a.forma || '',
+    producao: r2(a.producao), repasse: r2(a.repasse), diferenca: r2((Number(a.repasse) || 0) - (Number(a.producao) || 0)), motivo: a.motivoTexto || '',
+    lancadoPor: nomesLancadores(a.lancadoPor) || (a.confianca === 'sem' ? 'Sem registro no Caixa' : ''), tipo: tiposLancadores(a.lancadoPor),
+  }))));
+  if (atendRows.length) {
+    tabelaSimples(wb, 'Atendimentos', X.blue, m.referencia, [
+      { header: 'Médico', key: 'medico', width: 30, bold: true },
+      { header: 'Paciente', key: 'paciente', width: 30 },
+      { header: 'Data', key: 'data', width: 12 },
+      { header: 'Código do atendimento', key: 'codigo', width: 16 },
+      { header: 'Procedimento', key: 'procedimento', width: 40 },
+      { header: 'Forma de pagamento', key: 'forma', width: 22 },
+      { header: 'Produção', key: 'producao', width: 15, fmt: FMT_MONEY },
+      { header: 'Repasse', key: 'repasse', width: 15, fmt: FMT_MONEY },
+      { header: 'Diferença', key: 'diferenca', width: 15, fmt: FMT_SIGNED },
+      { header: 'Motivo', key: 'motivo', width: 46 },
+      { header: 'Lançado por', key: 'lancadoPor', width: 32 },
+      { header: 'Tipo', key: 'tipo', width: 22 },
+    ], atendRows, 'Diferença = Repasse − Produção, por atendimento. "Lançado por" = Editor financeiro do Fechamento de Caixa.');
+  }
+
+  // ── Guias de convênio não enviadas ──
+  const cz = m.cruzamento;
+  if (cz?.guiasNaoEnviadas) {
+    const gne = cz.guiasNaoEnviadas;
+    tabelaSimples(wb, 'Guias não enviadas', X.orange, m.referencia, [
+      { header: 'Data do atendimento', key: 'data', width: 14 },
+      { header: 'Dias sem envio', key: 'dias', width: 10, fmt: FMT_INT },
+      { header: 'Situação', key: 'situacao', width: 28 },
+      { header: 'Paciente', key: 'paciente', width: 32, bold: true },
+      { header: 'Médico', key: 'medico', width: 28 },
+      { header: 'Convênio', key: 'convenio', width: 28 },
+      { header: 'Guia', key: 'guia', width: 16 },
+      { header: 'Procedimentos', key: 'procedimentos', width: 40 },
+      { header: 'Valor', key: 'valor', width: 15, fmt: FMT_MONEY, total: true },
+      ...(cz.comCaixa ? [{ header: 'Lançado por', key: 'lancadoPor', width: 32 }, { header: 'Tipo', key: 'tipo', width: 22 }] : []),
+    ], (gne.itens || []).map((g) => ({
+      data: g.data, dias: g.dias ?? '', situacao: FAIXAS_GUIA[g.faixa] || '', paciente: titleCase(g.paciente), medico: titleCase(g.medico),
+      convenio: g.convenio, guia: (g.guias || []).join(', '), procedimentos: (g.procedimentos || []).join(', '), valor: r2(g.valor),
+      lancadoPor: nomesLancadores(g.lancadoPor) || 'Sem registro no Caixa', tipo: tiposLancadores(g.lancadoPor),
+    })), gne.itens?.length
+      ? `Atendimentos de convênio sem "Quem enviou" na Produção.${cz.dataReferencia ? ` Dias contados até ${cz.dataReferencia}.` : ''} Convênios faturados pelo próprio médico ficaram de fora (${count(gne.foraDoEnvio?.linhas)} linhas).`
+        + (gne.truncado > 0 ? ` ATENÇÃO: esta auditoria foi salva com a lista resumida; aqui estão ${count(gne.itens.length)} de ${count(gne.total.n)} atendimentos (total geral ${money(gne.total.valor)}).` : '')
+      : 'Todas as guias de convênio do período foram enviadas ao faturamento.');
+  }
+
+  // ── Quem lançou ──
+  if (cz?.comCaixa && cz.ranking?.length) {
+    tabelaSimples(wb, 'Quem lançou', X.navy, m.referencia, [
+      { header: 'Lançado por', key: 'nome', width: 34, bold: true },
+      { header: 'Tipo', key: 'tipo', width: 22 },
+      { header: 'Também faturamento', key: 'faturamento', width: 12 },
+      { header: 'Lançamentos', key: 'lancamentos', width: 12, fmt: FMT_INT },
+      { header: 'Guias de convênio lançadas', key: 'guiasLancadas', width: 14, fmt: '#,##0.0' },
+      { header: 'Guias não enviadas', key: 'guiasNaoEnviadas', width: 12, fmt: '#,##0.0' },
+      { header: 'Valor das guias', key: 'valorGuias', width: 15, fmt: FMT_MONEY },
+      { header: 'Taxa de não envio', key: 'taxa', width: 12, fmt: FMT_PCT },
+      { header: 'Atrasadas', key: 'guiasAtrasadas', width: 11, fmt: '#,##0.0' },
+      { header: 'Divergências', key: 'divergencias', width: 12, fmt: '#,##0.0' },
+      { header: 'Valor das divergências', key: 'valorDivergencias', width: 15, fmt: FMT_MONEY },
+      { header: 'Faltas', key: 'faltas', width: 9, fmt: FMT_INT },
+      { header: 'Cancelamentos', key: 'cancelamentos', width: 12, fmt: FMT_INT },
+    ], cz.ranking.map((r) => ({
+      nome: titleCase(r.nome), tipo: TIPOS_LANCADOR[r.tipo] || 'Atendente', faturamento: r.faturamento ? 'Sim' : '', lancamentos: r.lancamentos,
+      guiasLancadas: r.guiasLancadas, guiasNaoEnviadas: r.guiasNaoEnviadas, valorGuias: r.valorGuias, taxa: r.taxaGuias == null ? '' : r.taxaGuias / 100,
+      guiasAtrasadas: r.guiasAtrasadas, divergencias: r.divergencias, valorDivergencias: r.valorDivergencias, faltas: r.faltas, cancelamentos: r.cancelamentos,
+    })), '"Editor financeiro" do Fechamento de Caixa. Atendimento lançado por duas pessoas indistinguíveis conta meio para cada uma (por isso as casas decimais).');
+  }
+
   return wb;
+}
+
+/** Aba de tabela simples no visual das demais: cabeçalho azul-marinho, zebra, filtros, nota no rodapé e total opcional. */
+function tabelaSimples(wb, nome, cor, referencia, colunas, linhas, nota) {
+  const ws = wb.addWorksheet(nome, { views: [{ state: 'frozen', ySplit: 1, showGridLines: false }], properties: { tabColor: { argb: cor } } });
+  ws.columns = colunas.map(({ header, key, width }) => ({ header, key, width }));
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1' };
+  ws.headerFooter = { oddFooter: `&L&8ConSaúde · ${referencia}&R&8Página &P de &N` };
+  styleHeader(ws.getRow(1), { height: 30 });
+  colunas.forEach((c, i) => { if (c.fmt) ws.getCell(1, i + 1).alignment = { horizontal: 'right', vertical: 'middle', wrapText: true }; });
+  linhas.forEach((l, li) => {
+    const row = ws.addRow(l);
+    row.height = 18;
+    row.eachCell({ includeEmpty: true }, (cell, ci) => {
+      const c = colunas[ci - 1];
+      cell.font = { name: FONT, size: 10, bold: Boolean(c?.bold), color: { argb: X.ink } };
+      cell.border = { bottom: hair };
+      cell.alignment = { vertical: 'middle' };
+      if (li % 2 === 1) cell.fill = solid(X.zebra);
+      if (c?.fmt && typeof cell.value === 'number') cell.numFmt = c.fmt;
+    });
+  });
+  const last = linhas.length + 1;
+  if (linhas.length) {
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: last, column: colunas.length } };
+    const comTotal = colunas.map((c, i) => (c.total ? i + 1 : 0)).filter(Boolean);
+    if (comTotal.length) {
+      const t = ws.getRow(last + 1);
+      t.getCell(1).value = 'Total';
+      comTotal.forEach((ci) => {
+        const letra = ws.getColumn(ci).letter;
+        const soma = linhas.reduce((s, l) => s + (Number(l[colunas[ci - 1].key]) || 0), 0);
+        t.getCell(ci).value = { formula: `SUM(${letra}2:${letra}${last})`, result: r2(soma) };
+        t.getCell(ci).numFmt = colunas[ci - 1].fmt || FMT_MONEY;
+      });
+      for (let c = 1; c <= colunas.length; c += 1) {
+        const cell = t.getCell(c);
+        cell.font = { name: FONT, size: 10, bold: true, color: { argb: X.navy } };
+        cell.fill = solid(X.blueTint);
+        cell.border = { top: { style: 'medium', color: { argb: X.navy } } };
+      }
+    }
+  }
+  if (nota) {
+    const n = ws.getRow(last + (linhas.length ? 3 : 1));
+    n.getCell(1).value = nota;
+    n.getCell(1).font = { name: FONT, size: 9, italic: true, color: { argb: X.ink3 } };
+  }
+  return ws;
 }
 
 /** Gera e baixa a planilha .xlsx. opts: ver buildReportModel. */

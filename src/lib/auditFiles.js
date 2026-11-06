@@ -7,7 +7,7 @@ export const PARTE_BASE64 = 700_000;
 export const ARQUIVO_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Identificador de cada arquivo dentro da auditoria → rótulo exibido. */
-export const ARQUIVOS_AUDITORIA = { prod: "Relatório de Produção", rep: "Relatório de Repasse" };
+export const ARQUIVOS_AUDITORIA = { prod: "Relatório de Produção", rep: "Relatório de Repasse", caixa: "Fechamento de Caixa" };
 
 export function bytesParaBase64(bytes) {
   let bin = "";

@@ -1,6 +1,7 @@
 // Dados FICTÍCIOS só para o harness de desenvolvimento (dev-preview.html). Nomes inventados; valores ilustrativos.
 // Nada aqui é importado pelo app de produção.
 import { brl, generateInsights } from '../lib/engine.js';
+import { prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns } from '../lib/cruzamento.js';
 
 const MEDICOS = [
   'RICARDO ALVES PEREIRA', 'MARIANA DOS SANTOS COSTA', 'JOÃO PEDRO DA SILVA', 'FERNANDA LIMA ROCHA', 'CARLOS EDUARDO MENDES',
@@ -38,6 +39,76 @@ export function makeResultados({ referencia = 'setembro de 2026', n = MEDICOS.le
     divergencias: divs,
     insights: divs.length ? generateInsights(divs, 42, valorTotal) : [],
     processadoEm: '26/09/2026, 14:32:10', referencia, file1Name: 'producao_set-2026_clinica-integrada-sao-lucas.xlsx', file2Name: 'repasse_set-2026_clinica-integrada-sao-lucas.xlsx',
+  };
+}
+
+/**
+ * Auditoria fictícia no formato do Sistema Amigo (Código de atendimento + Fechamento de Caixa), processada pelo
+ * motor real: divergências por atendimento, "lançado por", guias não enviadas e ranking. Nomes inventados.
+ */
+export function makeResultadosAmigo() {
+  const ATEND = ['BEATRIZ MONTEIRO ALVES', 'CAIO HENRIQUE PRADO', 'DÉBORA NASCIMENTO REIS', 'EDUARDO FONTES LIMA', 'FLÁVIA CUNHA MATOS'];
+  const MEDS = ['RICARDO ALVES PEREIRA', 'MARIANA DOS SANTOS COSTA', 'JOÃO PEDRO DA SILVA', 'FERNANDA LIMA ROCHA'];
+  const CONVS = ['BRADESCO SAÚDE', 'AMIL', 'CASSI', 'UNIMED DR. RICARDO'];
+  const PACS = Array.from({ length: 36 }, (_, i) => `${['ANA', 'BRUNO', 'CLARA', 'DIEGO', 'ELISA', 'FÁBIO'][i % 6]} ${['SOUZA', 'MARTINS', 'TEIXEIRA', 'PINTO', 'VIEIRA', 'DIAS'][Math.floor(i / 6)]} ${['RAMOS', 'LOPES', 'MELO'][i % 3]}`);
+  const prod = [], rep = [], caixa = [];
+  for (let i = 0; i < 140; i += 1) {
+    const dia = 1 + (i % 26);
+    const data = `${String(dia).padStart(2, '0')}/09/2026`;
+    const codigo = String(300000 + i);
+    const med = MEDS[i % MEDS.length];
+    const pac = PACS[(i * 7) % PACS.length];
+    const conv = i % 5 === 0 ? 'Cartão' : CONVS[i % CONVS.length];
+    const fat = conv !== 'Cartão';
+    const valor = 120 + ((i * 37) % 280);
+    const pendente = i % 47 === 3;
+    const forma = pendente ? 'Pendente' : conv;
+    const enviada = fat && conv !== CONVS[3] && (i % 9 !== 4);
+    const desconto = i % 61 === 10 ? 40 : 0;
+    prod.push({
+      'Data Atendimento': data, 'Código Atendimento': codigo, Paciente: pac, Profissional: med, Executante: med,
+      'Grupo de Convênio': fat && !pendente ? 'FATURADO' : 'PARTICULAR', 'Conv. cadastrado': fat ? conv : '', 'Forma de Pagamento': forma,
+      'Tipo Atendimento': 'CONSULTA - CONVÊNIO', Item: i % 3 ? 'CONSULTA ESPECIALISTA' : 'ECOCARDIOGRAMA TRANSTORACICO', Quantidade: 1,
+      'Valor do item R$': valor, 'Desconto R$': desconto, 'Valor total do item R$': valor - desconto,
+      'Número da guia': fat ? String(880000 + i) : '', 'Número lote': enviada ? '41' : (i % 23 === 7 ? '44' : ''),
+      'Quem enviou': enviada && !pendente ? 'GABRIEL FATURAMENTO SILVA' : '',
+      'Data envio': enviada && !pendente ? (dia + 12 <= 30 ? `${String(dia + 12).padStart(2, '0')}/09/2026` : `${String(dia + 12 - 30).padStart(2, '0')}/10/2026`) : '',
+    });
+    if (!pendente) {
+      rep.push({
+        'Data Atend': data, 'Cód. atendimento': codigo, Paciente: pac, 'Forma de Pagamento': forma, 'Profissional Executante': med,
+        'Procedimento/Matmed': 'CONSULTA ESPECIALISTA - CONVÊNIO', Faturado: valor, Desconto: 0, Líquido: valor,
+      });
+    }
+    caixa.push({
+      'Data Transação': data, 'Data Atendimento': data, Paciente: pac, Executante: med,
+      'Editor financeiro': i % 11 === 6 ? med : ATEND[(i * 3) % ATEND.length], 'Qtd / Procedimento': `1 - ${i % 3 ? 'CONSULTA ESPECIALISTA' : 'ECOCARDIOGRAMA TRANSTORACICO'}`,
+      'Forma de Pagamento': forma, 'Valor R$': valor - desconto,
+    });
+  }
+  // Uma sessão de terapia em outro dia com a mesma guia de um atendimento já enviado (guia usada em dois dias).
+  prod.push({ ...prod[1], 'Data Atendimento': '29/09/2026', 'Código Atendimento': '399999', 'Quem enviou': '', 'Data envio': '', 'Número lote': '' });
+  rep.push({ ...rep.find((r) => r['Cód. atendimento'] === '300001'), 'Data Atend': '29/09/2026', 'Cód. atendimento': '399999' });
+  caixa.push({ ...caixa[1], 'Data Transação': '29/09/2026', 'Data Atendimento': '29/09/2026', 'Editor financeiro': ATEND[4] });
+  const pCols = { medicoCol: 'Profissional', pacienteCol: 'Paciente', valorCol: 'Valor total do item R$' };
+  const rCols = { medicoCol: 'Profissional Executante', pacienteCol: 'Paciente', valorCol: 'Líquido' };
+  const prep = prepararAtendimentos(prod, rep);
+  const divs = MEDS.map((medico) => {
+    const pr = prod.filter((r) => r.Profissional === medico), rr = rep.filter((r) => r['Profissional Executante'] === medico);
+    const tp = pr.reduce((s, r) => s + r['Valor total do item R$'], 0), tr = rr.reduce((s, r) => s + r.Líquido, 0);
+    const diff = tp - tr;
+    return { id: medico, medico, crm: '', producao: brl(tp), repasse: brl(tr), diferenca: brl(Math.abs(diff)), diferencaRaw: Math.abs(diff),
+      diferencaSigned: diff, sentido: diff > 0 ? 'prod_maior' : 'rep_maior', status: 'pendente', detalhes: compararAtendimentos(pr, rr, pCols, rCols, prep) };
+  }).filter((d) => Math.round(d.diferencaRaw * 100) > 0).sort((a, b) => b.diferencaRaw - a.diferencaRaw);
+  const cruzamento = analisarCruzamento({ prodTodas: prod, repTodas: rep, caixaRows: caixa, caixaCols: detectCaixaColumns(caixa), divergencias: divs });
+  const valorTotal = divs.reduce((s, d) => s + d.diferencaRaw, 0);
+  return {
+    totalMedicos: MEDS.length, medicosComDivergencia: divs.length, totalDivergencias: divs.reduce((s, d) => s + (d.detalhes.length || 1), 0),
+    valorTotal: brl(valorTotal), valorTotalRaw: valorTotal, divergencias: divs,
+    insights: [...generateInsights(divs, MEDS.length, valorTotal), ...insightsCruzamento(cruzamento)],
+    processadoEm: '05/11/2026, 21:32:10', referencia: 'setembro de 2026', tolerancia: 0.01,
+    file1Name: 'relatorio-producao-setembro.xlsx', file2Name: 'relatorio-repasse-setembro.xlsx', file3Name: 'relatorio-fechamento-de-caixa-diario-setembro.xlsx',
+    cruzamento,
   };
 }
 

@@ -10,12 +10,28 @@ export const PREFS_KEY = 'cs_audit_cfg';
 export const DEFAULT_TOLERANCE = 0.01;
 export const MAX_TOLERANCE = 1_000_000;
 
+/** Convênios cujas guias o próprio médico fatura (ficam fora de "Guias não enviadas"). Prefixos por palavra. */
+export const DEFAULT_CONVENIOS_MEDICO = Object.freeze(['UNIMED DR.', 'UNIMED DRA.']);
+
 export const DEFAULT_PREFERENCES = Object.freeze({
   tolerancia: DEFAULT_TOLERANCE,
   formato: 'PDF',
   novaAuditoria: Object.freeze({ ignorar: true, comparaNome: true, ia: true }),
   exportacao: Object.freeze({ detalhePacientes: true, insights: true, responsavel: '' }),
+  conveniosMedico: DEFAULT_CONVENIOS_MEDICO,
 });
+
+/** Lista de convênios: aceita array ou texto (um por linha ou separado por vírgula/ponto e vírgula), sem repetidos. */
+export function parseConvenios(v) {
+  const itens = Array.isArray(v) ? v : String(v ?? '').split(/[\n;,]+/);
+  const vistos = new Set();
+  return itens.map((s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)).filter((s) => {
+    const k = s.toUpperCase();
+    if (!s || vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  }).slice(0, 60);
+}
 
 function toTolerance(v) {
   // Registros antigos guardavam o texto do campo ("0,01"); os novos guardam número.
@@ -44,8 +60,12 @@ export function normalizePreferences(raw) {
       insights: bool(ex.insights, d.exportacao.insights),
       responsavel: typeof ex.responsavel === 'string' ? ex.responsavel.trim().slice(0, 120) : '',
     },
+    conveniosMedico: r.conveniosMedico === undefined ? [...d.conveniosMedico] : parseConvenios(r.conveniosMedico),
   };
 }
+
+/** Convênios faturados pelo próprio médico (Configurações), usados nas novas auditorias. */
+export const getConveniosMedico = () => getPreferences().conveniosMedico;
 
 export function getPreferences() {
   try {

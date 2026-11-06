@@ -445,6 +445,7 @@ ${card("s12", "Visão geral", "", `<div class="kpis">
 <div class="kpi"><div class="k">Médicos com divergência</div><div class="v num">${count(comDiv)}</div><div class="s">${pct}% dos médicos analisados</div></div>
 <div class="kpi"><div class="k">Total de divergências</div><div class="v num">${count(res?.totalDivergencias)}</div><div class="s">itens a revisar</div></div>
 <div class="kpi"><div class="k">Tipos de divergência</div><div class="v num">${count(tipos.length)}</div><div class="s">${tipos[0] ? `mais comum: ${esc(tipos[0][0])}` : "sem detalhe por paciente"}</div></div>
+${res?.cruzamento?.guiasNaoEnviadas ? `<div class="kpi"><div class="k">Guias não enviadas</div><div class="v num">${esc(money(res.cruzamento.guiasNaoEnviadas.total.valor))}</div><div class="s">${esc(plural(res.cruzamento.guiasNaoEnviadas.total.n, "atendimento de convênio", "atendimentos de convênio"))} sem envio ao faturamento</div></div>` : ""}
 </div>`)}
 </div>
 

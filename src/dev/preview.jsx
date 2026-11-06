@@ -18,7 +18,7 @@ import UsersPage from '../pages/UsersPage.jsx';
 import ProfilePage from '../pages/ProfilePage.jsx';
 import SettingsPage from '../pages/SettingsPage.jsx';
 import { LoginScreen, ForgotPasswordScreen, ForcePasswordChangeScreen, FirebaseSetupScreen } from '../pages/auth.jsx';
-import { makeHistorico, makeResultados, ADMIN, AUDITOR, USER_LIST } from './fixtures.js';
+import { makeHistorico, makeResultados, makeResultadosAmigo, ADMIN, AUDITOR, USER_LIST } from './fixtures.js';
 import { getPreferences, getNewAuditDefaults } from '../lib/preferences.js';
 
 const params = new URLSearchParams(location.search);
@@ -44,7 +44,8 @@ function fakeFile(name, size) {
 
 function Shell() {
   const [page, setPage] = useState(screen);
-  const resultados = makeResultados();
+  // ?amigo=1: relatórios no formato do Sistema Amigo + Fechamento de Caixa (atendimentos, guias, quem lançou).
+  const resultados = params.get('amigo') ? makeResultadosAmigo() : makeResultados();
   // report-done: todos revisados/corrigidos (estado "Revisão concluída").
   const [statuses, setStatuses] = useState(page === 'report-done'
     ? Object.fromEntries(resultados.divergencias.map((d, i) => [d.id, i % 3 ? 'revisado' : 'corrigido']))
@@ -57,6 +58,7 @@ function Shell() {
   const loaded = page === 'new-loaded' || page === 'new-error';
   const [file1, setFile1] = useState(loaded ? fakeFile('producao_set-2026_clinica-integrada-sao-lucas.xlsx', 184320) : null);
   const [file2, setFile2] = useState(page === 'new-error' ? fakeFile('repasse_set-2026.csv', 40960) : null);
+  const [file3, setFile3] = useState(loaded ? fakeFile('relatorio-fechamento-de-caixa-diario-setembro.xlsx', 393094) : null);
   const [periodo, setPeriodo] = useState(loaded ? 'Setembro/2026' : '');
   const [colMap, setColMap] = useState({ prod: null, rep: null });
   const [uploadError, setUploadError] = useState(page === 'new-error' ? { prod: [], rep: ['Não encontramos a coluna de valor. Indique qual é em “Ajustar colunas”.'] } : page === 'new-format' ? { geral: 'Formato inválido: ".pdf". Use .xlsx, .xls ou .csv.' } : null);
@@ -72,7 +74,9 @@ function Shell() {
   else if (base === 'audits' || base === 'new') body = (
     <AuditsPage view={base === 'new' ? 'new' : 'list'} onShowList={() => setPage('audits')} onNewAudit={() => setPage('new')} historyCount={historico.length}
       list={{ historico, currentUser: user, status, onOpen: () => setPage('report'), onDelete: () => {}, onRetry: () => {} }}
-      upload={{ file1, file2, setFile1, setFile2, handleFileSelect: (f, set) => set(f), configs, setConfigs, startAudit: () => setPage('processing'), uploadError,
+      upload={{ file1, file2, file3, setFile1, setFile2, setFile3, rows3: file3 ? 5013 : null,
+        cols3: file3 ? { pacienteCol: 'Paciente', atendenteCol: 'Editor financeiro', dataCol: 'Data Atendimento', executanteCol: 'Executante' } : null,
+        handleFileSelect: (f, set) => set(f), configs, setConfigs, startAudit: () => setPage('processing'), uploadError,
         cols1: file1 ? { medicoCol: 'Nome do Prestador', pacienteCol: 'Beneficiário', valorCol: 'Valor Total' } : null, rows1: file1 ? 1284 : null,
         cols2: file2 ? { medicoCol: 'Profissional', pacienteCol: 'Paciente', valorCol: null } : null, rows2: file2 ? 1190 : null,
         periodoAuditoria: periodo, setPeriodoAuditoria: setPeriodo,
