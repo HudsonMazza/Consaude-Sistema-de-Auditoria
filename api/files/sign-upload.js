@@ -24,6 +24,8 @@ export default async function handler(req, res) {
     const uploadUrl = await createUploadUrl({ key: r2Key, contentType: validation.contentType });
     return send(res, 200, { fileId: id, uploadUrl, contentType: validation.contentType, expiresIn: 300 });
   } catch (err) {
+    // Aparece nos logs da função no Vercel; sem isso a causa (regras do Firestore ou variáveis R2_*) fica invisível.
+    console.error("sign-upload falhou:", err?.message || err);
     return send(res, 502, { error: "Não foi possível preparar o upload. Tente novamente." });
   }
 }

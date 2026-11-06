@@ -127,6 +127,8 @@ service cloud.firestore {
         && request.resource.data.dados is string
         && request.resource.data.dados.size() <= 700000;
       allow update: if false;
+    }
+
     // Metadados dos arquivos no bucket privado R2. O conteúdo nunca passa pelo
     // Firestore: só a API autenticada gera URLs assinadas para o R2.
     match /files/{fileId} {

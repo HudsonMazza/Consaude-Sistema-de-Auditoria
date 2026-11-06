@@ -240,8 +240,10 @@ function ColumnMapper({ headers, detected, chosen, onChoose, open, onToggle, for
   );
 }
 
-function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits, heads1 = [], heads2 = [], colMap = {}, chooseColumn }) {
+function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha = {}, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado, onShowAudits, heads1 = [], heads2 = [], colMap = {}, chooseColumn }) {
   const { compact } = useViewport();
+  // Arquivos aceitos, mas que não ficaram guardados no armazenamento (a auditoria roda normalmente).
+  const semCopia = [file1 && r2Falha.prod && 'Produção', file2 && r2Falha.rep && 'Repasse'].filter(Boolean);
   const [mapOpen, setMapOpen] = useState({ prod: false, rep: false });
   // Um arquivo com erro de validação precisa ser trocado antes de processar de novo.
   const hasFileErrors = Boolean(uploadError?.prod?.length || uploadError?.rep?.length);
@@ -268,6 +270,13 @@ function NewAudit({ file1, file2, setFile1, setFile2, handleFileSelect, configs,
     <div className="cs-grid">
       <div className="cs-span-8 cs-stack" style={{ gap: compact ? 16 : 20 }}>
         {uploadError?.geral && <Callout tone="danger" title="Não foi possível continuar">{uploadError.geral}</Callout>}
+        {semCopia.length > 0 && (
+          <Callout tone="warning" title="Arquivo aceito, mas sem cópia guardada">
+            {semCopia.length === 2
+              ? 'Os arquivos de Produção e Repasse não puderam ser enviados ao armazenamento seguro. A auditoria funciona normalmente, mas eles não ficarão guardados para download depois.'
+              : `O arquivo de ${semCopia[0]} não pôde ser enviado ao armazenamento seguro. A auditoria funciona normalmente, mas ele não ficará guardado para download depois.`}
+          </Callout>
+        )}
         <UploadProgress done={selectedCount} total={2} />
         <div style={{ display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: compact ? 12 : 20, alignItems: 'start' }}>
           {cards.map(({ num, key, title, subtitle, file, setFile, cols, rows, heads, err }) => (

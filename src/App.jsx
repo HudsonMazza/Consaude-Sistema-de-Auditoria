@@ -68,6 +68,7 @@ export default function App() {
   const [file1,         setFile1]         = useState(null);
   const [file2,         setFile2]         = useState(null);
   const [r2FileIds,     setR2FileIds]     = useState({ prod: null, rep: null });
+  const [r2Falha,       setR2Falha]       = useState({ prod: false, rep: false });
   const [processing,    setProcessing]    = useState(false);
   const [progress,      setProgress]      = useState(0);
   const [steps,         setSteps]         = useState([false,false,false,false,false,false]);
@@ -183,6 +184,7 @@ export default function App() {
     setFile1(null);
     setFile2(null);
     setR2FileIds({ prod: null, rep: null });
+    setR2Falha({ prod: false, rep: false });
     // Nada da sessão anterior passa para o próximo usuário desta aba
     statusesDirty.current = false;
     setStatuses({});
@@ -418,16 +420,17 @@ export default function App() {
       setUploadError((prev) => ({ ...prev, geral: "Arquivo muito grande. Limite de 20 MB por arquivo." }));
       return;
     }
+    // O conteúdo vai direto para o bucket privado via URL curta assinada; a
+    // planilha selecionada continua local para a prévia e processamento atual.
+    // Se o armazenamento falhar, o arquivo ainda é aceito (a auditoria não depende dele), só sem cópia guardada.
+    let id = null;
     try {
-      // O conteúdo vai direto para o bucket privado via URL curta assinada; a
-      // planilha selecionada continua local para a prévia e processamento atual.
-      const id = await uploadSpreadsheet(file, () => auth?.currentUser?.getIdToken());
-      setR2FileIds((ids) => ({ ...ids, [key]: id }));
-      setUploadError((prev) => (prev?.geral ? { ...prev, geral: undefined } : prev));
-      setter(file);
-    } catch (err) {
-      setUploadError((prev) => ({ ...prev, geral: err?.message || "Não foi possível enviar o arquivo. Tente novamente." }));
-    }
+      id = await uploadSpreadsheet(file, () => auth?.currentUser?.getIdToken());
+    } catch { /* falha de armazenamento: segue com aviso */ }
+    setR2FileIds((ids) => ({ ...ids, [key]: id }));
+    setR2Falha((falha) => ({ ...falha, [key]: !id }));
+    setUploadError((prev) => (prev?.geral ? { ...prev, geral: undefined } : prev));
+    setter(file);
   };
 
   const handleGenerateAIReport = async () => {
@@ -476,6 +479,7 @@ export default function App() {
     setFile1(null);
     setFile2(null);
     setR2FileIds({ prod: null, rep: null });
+    setR2Falha({ prod: false, rep: false });
     setUploadError(null);
     setConfigs(getNewAuditDefaults());
     flushStatuses();
@@ -548,7 +552,7 @@ export default function App() {
         ) : page === "audits-new" || page === "audits" ? (
           <AuditsPage exportOptions={() => getExportOptions(currentUser)} view={page === "audits-new" ? "new" : "list"} onShowList={showAuditList} onNewAudit={startNewAudit}
             list={{ historico, currentUser, onOpen: openEntry, onDelete: handleDeleteAudit, status: histStatus, onRetry: () => setHistRetry((n) => n + 1) }}
-            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep,
+            upload={{ file1, file2, setFile1, setFile2, handleFileSelect, configs, setConfigs, startAudit, uploadError, r2Falha, cols1, cols2, rows1, rows2, periodoAuditoria, setPeriodoAuditoria, periodoDetectado: refDetectada.prod || refDetectada.rep,
               heads1, heads2, colMap, chooseColumn }} />
         ) : (
           <Suspense fallback={<PageLoading />}>
