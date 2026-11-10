@@ -1,7 +1,7 @@
 // Dados FICTÍCIOS só para o harness de desenvolvimento (dev-preview.html). Nomes inventados; valores ilustrativos.
 // Nada aqui é importado pelo app de produção.
 import { brl, generateInsights } from '../lib/engine.js';
-import { prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns } from '../lib/cruzamento.js';
+import { prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, escopoNaoFaturado } from '../lib/cruzamento.js';
 
 const MEDICOS = [
   'RICARDO ALVES PEREIRA', 'MARIANA DOS SANTOS COSTA', 'JOÃO PEDRO DA SILVA', 'FERNANDA LIMA ROCHA', 'CARLOS EDUARDO MENDES',
@@ -98,9 +98,11 @@ export function makeResultadosAmigo() {
   }
   const pCols = { medicoCol: 'Profissional', pacienteCol: 'Paciente', valorCol: 'Valor total do item R$' };
   const rCols = { medicoCol: 'Profissional Executante', pacienteCol: 'Paciente', valorCol: 'Líquido' };
-  const prep = prepararAtendimentos(prod, rep);
+  // Mesmo escopo do app: só o que ainda não foi faturado entra em Produção × Repasse.
+  const escopo = escopoNaoFaturado(prod, rep);
+  const prep = prepararAtendimentos(escopo.prod, escopo.rep);
   const divs = MEDS.map((medico) => {
-    const pr = prod.filter((r) => r.Profissional === medico), rr = rep.filter((r) => r['Profissional Executante'] === medico);
+    const pr = escopo.prod.filter((r) => r.Profissional === medico), rr = escopo.rep.filter((r) => r['Profissional Executante'] === medico);
     const tp = pr.reduce((s, r) => s + r['Valor total do item R$'], 0), tr = rr.reduce((s, r) => s + r.Líquido, 0);
     const diff = tp - tr;
     return { id: medico, medico, crm: '', producao: brl(tp), repasse: brl(tr), diferenca: brl(Math.abs(diff)), diferencaRaw: Math.abs(diff),
@@ -115,6 +117,9 @@ export function makeResultadosAmigo() {
     processadoEm: '05/11/2026, 21:32:10', referencia: 'setembro de 2026', tolerancia: 0.01,
     file1Name: 'relatorio-producao-setembro.xlsx', file2Name: 'relatorio-repasse-setembro.xlsx', file3Name: 'relatorio-fechamento-de-caixa-diario-setembro.xlsx',
     cruzamento,
+    escopo: { naoFaturado: true,
+      foraProd: { linhas: escopo.foraProd.length, valor: escopo.foraProd.reduce((s, r) => s + r['Valor total do item R$'], 0), atendimentos: escopo.atendimentosFora },
+      foraRep: { linhas: escopo.foraRep.length, valor: escopo.foraRep.reduce((s, r) => s + r.Líquido, 0) } },
   };
 }
 

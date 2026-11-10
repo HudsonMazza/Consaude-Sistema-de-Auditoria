@@ -6,9 +6,12 @@
 //   Caixa de mesmo paciente e data, desempatando por valor, procedimento e executante. A pessoa vem da coluna
 //   "Editor financeiro" (quem registrou o atendimento). Não afirmamos que é quem ficou com a guia: a tela diz
 //   "lançado por".
-// - Guias não enviadas: atendimentos de convênio (Grupo de Convênio = FATURADO) sem "Quem enviou" na Produção.
+// - Guias não enviadas: atendimentos de convênio (Grupo de Convênio = FATURADO) ainda não faturados na Produção.
 //   É o sinal da guia que não chegou ao faturamento — Produção × Repasse não enxerga, porque o Repasse traz o
 //   atendimento com o mesmo valor de qualquer jeito.
+// - Escopo: a auditoria olha só o que ainda não foi faturado. Linha não faturada = "Número lote" e "Quem enviou"
+//   vazios na Produção (linhaNaoFaturada / escopoNaoFaturado). O já faturado serve só de referência (prazos de
+//   envio, taxa da equipe, casamento com o Caixa).
 //
 // Módulo puro (sem React nem Firebase): roda no navegador e nos testes em Node.
 import { normalizeName, parseValue, isPix } from "./engine.js";
@@ -208,6 +211,55 @@ export function convenioDoMedico(convenio, lista) {
     const pp = semAcento(p).replace(/\./g, " ").split(" ").filter(Boolean);
     return pp.length > 0 && pp.length <= palavras.length && pp.every((w, i) => palavras[i] === w);
   });
+}
+
+// ─── Escopo: só o que ainda não foi faturado ──────────────────────────────────
+
+/** Linha da Produção ainda não faturada: "Número lote" e "Quem enviou" vazios (coluna ausente conta como vazia). */
+export function linhaNaoFaturada(r, cP) {
+  return vazio(r[cP.lote]) && vazio(r[cP.quemEnviou]);
+}
+
+/**
+ * Limita Produção e Repasse ao que ainda não foi faturado (regra de negócio: o já faturado não é auditado).
+ * - Produção: fica a linha não faturada. Com o Código de atendimento, o atendimento é a unidade: se ainda tem algum
+ *   item não faturado, entra inteiro (o Repasse não tem lote nem envio, então só dá para comparar o atendimento todo).
+ * - Repasse: sai a linha cujo atendimento existe na Produção e está todo faturado. Linha sem código ou com
+ *   atendimento que não aparece na Produção continua (é divergência a conferir).
+ * Sem as colunas de faturamento na Produção, nada muda. Sem o código nas duas planilhas, o Repasse não pode ser
+ * limitado: nada muda e `motivo` explica (comparar só um lado criaria divergências falsas).
+ * Devolve { aplicado, motivo, prod, rep, foraProd, foraRep, atendimentosFora }.
+ */
+export function escopoNaoFaturado(prodRows, repRows) {
+  const nada = (motivo) => ({ aplicado: false, motivo, prod: prodRows, rep: repRows, foraProd: [], foraRep: [], atendimentosFora: 0 });
+  if (!prodRows?.length) return nada(null);
+  const cP = colunasProducao(prodRows);
+  if (!cP.lote && !cP.quemEnviou) return nada("sem_colunas");
+  const faturadas = prodRows.filter((r) => !linhaNaoFaturada(r, cP));
+  if (!faturadas.length) return { ...nada(null), aplicado: true };
+  const cR = colunasRepasse(repRows || []);
+  if (!cP.codigo || (repRows?.length && !cR.codigo)) return nada("sem_codigo");
+
+  const cod = (v) => String(v ?? "").trim();
+  const abertos = new Set(), todos = new Set();
+  for (const r of prodRows) {
+    const c = cod(r[cP.codigo]);
+    if (!c) continue;
+    todos.add(c);
+    if (linhaNaoFaturada(r, cP)) abertos.add(c);
+  }
+  const prod = [], foraProd = [];
+  for (const r of prodRows) {
+    const c = cod(r[cP.codigo]);
+    (linhaNaoFaturada(r, cP) || (c && abertos.has(c)) ? prod : foraProd).push(r);
+  }
+  const rep = [], foraRep = [];
+  for (const r of repRows || []) {
+    const c = cod(r[cR.codigo]);
+    (c && todos.has(c) && !abertos.has(c) ? foraRep : rep).push(r);
+  }
+  const atendimentosFora = new Set(foraProd.map((r) => cod(r[cP.codigo])).filter(Boolean)).size;
+  return { aplicado: true, motivo: null, prod, rep, foraProd, foraRep, atendimentosFora };
 }
 
 // ─── Atendimentos (Produção × Repasse por código) ─────────────────────────────
@@ -526,7 +578,8 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     }
   }
 
-  // 4) Guias de convênio não enviadas ao faturamento.
+  // 4) Guias de convênio não enviadas ao faturamento: só as linhas ainda não faturadas (lote e envio vazios).
+  //    As já faturadas servem de referência: prazo de envio de cada convênio, guia parcial e base da taxa da equipe.
   const P = temGuias ? prodTodas.filter((r) => !isPix(r[cP.forma]) && semAcento(r[cP.grupo]) === "FATURADO") : [];
   const datasValidasEnvio = [];
   const limitePorConvenio = new Map();
@@ -536,13 +589,14 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     const conv = semAcento(r[cP.forma]) || semAcento(r[cP.convenio]);
     const guia = String(r[cP.guia] ?? "").trim();
     const enviado = Boolean(normalizeName(r[cP.quemEnviou]));
+    const faturada = !linhaNaoFaturada(r, cP);
     const ec = envioPorConvenio.get(conv) || { linhas: 0, enviadas: 0, nome: String(r[cP.forma] ?? r[cP.convenio] ?? "").trim() };
-    ec.linhas++; if (enviado) ec.enviadas++;
+    ec.linhas++; if (faturada) ec.enviadas++;
     envioPorConvenio.set(conv, ec);
     if (guia) {
       const k = conv + "|" + guia;
       const sg = statusGuia.get(k) || { env: 0, nao: 0, pacientes: new Set() };
-      if (enviado) sg.env++; else sg.nao++;
+      if (faturada) sg.env++; else sg.nao++;
       sg.pacientes.add(normalizeName(r[cP.paciente]));
       statusGuia.set(k, sg);
     }
@@ -563,7 +617,7 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
   const foraDoEnvio = { linhas: 0, valor: 0, convenios: new Set() };
   const naoEnviadas = new Map();
   for (const r of P) {
-    if (normalizeName(r[cP.quemEnviou])) continue;
+    if (!linhaNaoFaturada(r, cP)) continue;
     const convRaw = String(r[cP.forma] ?? r[cP.convenio] ?? "").trim();
     if (convenioDoMedico(convRaw, opc.conveniosMedico)) {
       foraDoEnvio.linhas++; foraDoEnvio.valor += parseValue(r[cP.valor]); foraDoEnvio.convenios.add(convRaw);
@@ -574,14 +628,13 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     if (!g) {
       g = { codigo, data: toDataStr(r[cP.data]), paciente: String(r[cP.paciente] ?? "").trim(),
         medico: String(r[cP.executante] || r[cP.profissional] || "").trim(), convenio: convRaw, conv: semAcento(convRaw),
-        guias: new Set(), procedimentos: new Set(), lote: false, valor: 0 };
+        guias: new Set(), procedimentos: new Set(), valor: 0 };
       naoEnviadas.set(codigo, g);
     }
     const guia = String(r[cP.guia] ?? "").trim();
     if (guia) g.guias.add(guia);
     const proc = String(r[cP.item] ?? r[cP.tipoAtend] ?? "").trim();
     if (proc) g.procedimentos.add(proc);
-    if (!vazio(r[cP.lote])) g.lote = true;
     g.valor += parseValue(r[cP.valor]);
   }
   const ordemFaixa = { atrasada: 0, em_lote: 1, no_prazo: 2 };
@@ -589,7 +642,8 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     const t = dataToTime(g.data);
     const dias = isNaN(refT) || isNaN(t) ? null : Math.max(0, Math.round((refT - t) / DIA));
     const limite = limitePorConvenio.has(g.conv) ? limitePorConvenio.get(g.conv) : limiteGeral;
-    const faixa = g.lote ? "em_lote" : dias != null && limite != null && dias > limite ? "atrasada" : "no_prazo";
+    // "em_lote" (lote sem envio) não acontece mais: linha com lote já conta como faturada. Fica para auditorias antigas.
+    const faixa = dias != null && limite != null && dias > limite ? "atrasada" : "no_prazo";
     const guias = [...g.guias];
     // "Parcialmente enviada" só conta em guia de um único paciente: número repetido entre pacientes é colisão.
     const parcial = guias.some((n) => { const s = statusGuia.get(g.conv + "|" + n); return s && s.env > 0 && s.pacientes.size === 1; });
@@ -611,6 +665,7 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     .sort((a, b) => b.linhas - a.linhas).slice(0, 12).map((c) => ({ convenio: c.nome, linhas: c.linhas }));
 
   // 5) Guias usadas em mais de um dia (séries de terapia, por exemplo): quem lançou cada data.
+  //    Só guias com algum atendimento ainda não faturado (as já faturadas não têm mais o que corrigir).
   const guiasMap = new Map();
   for (const r of P) {
     const guia = String(r[cP.guia] ?? "").trim();
@@ -624,13 +679,14 @@ export function analisarCruzamento({ prodTodas, repTodas, caixaRows = null, caix
     if (pn && !g.nomes.has(pn)) g.nomes.set(pn, String(r[cP.paciente] ?? "").trim());
     const codigo = String(r[cP.codigo] ?? "").trim();
     const c = g.porCodigo.get(codigo) || { codigo, data: toDataStr(r[cP.data]), medico: String(r[cP.executante] || r[cP.profissional] || "").trim(), enviado: false };
-    if (normalizeName(r[cP.quemEnviou])) c.enviado = true;
+    if (linhaNaoFaturada(r, cP)) g.aberta = true; else c.enviado = true;
     g.porCodigo.set(codigo, c);
   }
   const multiDia = [];
   const repetidas = [];
   let suspeitasNumeracao = 0;
   for (const g of guiasMap.values()) {
+    if (!g.aberta) continue;
     const cods = [...g.porCodigo.values()];
     // Mesmo número de guia no mesmo convênio para pacientes diferentes: provável erro de digitação no cadastro.
     if (g.pacientes.size > 1) {

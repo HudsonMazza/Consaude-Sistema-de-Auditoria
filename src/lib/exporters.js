@@ -74,6 +74,15 @@ function toleranceText(res) {
   return t > 0 ? `${money(t)} por médico` : 'Nenhuma (todas as diferenças)';
 }
 
+/** Escopo registrado na auditoria: só o não faturado (auditorias antigas não têm o campo). */
+function scopeText(res) {
+  const e = res?.escopo;
+  if (!e) return null;
+  if (!e.naoFaturado) return 'Todas as linhas (sem como separar o faturado)';
+  const fora = (Number(e.foraProd?.linhas) || 0) + (Number(e.foraRep?.linhas) || 0);
+  return fora ? `Só não faturado (${count(fora)} ${fora === 1 ? 'linha faturada' : 'linhas faturadas'} de fora)` : 'Só não faturado';
+}
+
 /**
  * Consolida o resultado da auditoria para as duas exportações.
  * opts: { statuses, responsavel, incluirPacientes, incluirInsights, now }
@@ -131,6 +140,7 @@ export function buildReportModel(res, opts = {}) {
     file2Name: res?.file2Name || '—',
     responsavel: titleCase(opts.responsavel || '') || '—',
     tolerance: toleranceText(res),
+    scope: scopeText(res),
     totalMedicos: Number(res?.totalMedicos) || 0,
     medicosComDivergencia: Number(res?.medicosComDivergencia) || doctors.length,
     totalDivergencias: Number(res?.totalDivergencias) || 0,
@@ -438,6 +448,7 @@ export async function createPDF(res, opts = {}) {
     ...(m.file3Name ? [['Fechamento de caixa', m.file3Name, true]] : []),
     ['Processada em', `${m.processed.date}${m.processed.time ? ` às ${m.processed.time}` : ''}`],
     ...(m.tolerance ? [['Tolerância aplicada', m.tolerance]] : []),
+    ...(m.scope ? [['Escopo', m.scope]] : []),
     ['Responsável', m.responsavel],
     ['Gerado em', `${dateBR(m.now)} às ${timeBR(m.now)}`],
   ];
@@ -628,8 +639,8 @@ export async function createPDF(res, opts = {}) {
   if (gne) {
     const fx = gne.faixas || {};
     const resumo = gne.total.n
-      ? `${count(gne.total.n)} ${gne.total.n === 1 ? 'atendimento' : 'atendimentos'} de convênio sem "Quem enviou" na Produção, ${money(gne.total.valor)}. `
-        + `Atrasadas além do prazo do convênio: ${count(fx.atrasada?.n)} (${money(fx.atrasada?.valor)}); em lote sem envio: ${count(fx.em_lote?.n)}; dentro do prazo: ${count(fx.no_prazo?.n)}.`
+      ? `${count(gne.total.n)} ${gne.total.n === 1 ? 'atendimento' : 'atendimentos'} de convênio ainda não faturados (sem "Número lote" e sem "Quem enviou" na Produção), ${money(gne.total.valor)}. `
+        + `Atrasadas além do prazo do convênio: ${count(fx.atrasada?.n)} (${money(fx.atrasada?.valor)}); ${fx.em_lote?.n ? `em lote sem envio: ${count(fx.em_lote.n)}; ` : ''}dentro do prazo: ${count(fx.no_prazo?.n)}.`
         + (cz.dataReferencia ? ` Dias contados até ${cz.dataReferencia}.` : '')
         + (gne.truncado > 0 ? ` A lista abaixo mostra ${count(gne.itens?.length)} de ${count(gne.total.n)} atendimentos (auditoria salva com a lista resumida); os totais acima consideram todos.` : '')
         + (!m.incluirPacientes ? ' A lista por paciente não entra neste PDF (opção "Incluir detalhamento por paciente" desligada); ela está no Excel.' : '')
@@ -932,6 +943,7 @@ export async function createWorkbook(res, opts = {}) {
   fact('Arquivo de repasse', m.file2Name);
   if (m.file3Name) fact('Fechamento de caixa', m.file3Name);
   if (m.tolerance) fact('Tolerância aplicada', m.tolerance);
+  if (m.scope) fact('Escopo', m.scope);
   fact('Responsável', m.responsavel);
   fact('Gerado em', `${dateBR(m.now)} às ${timeBR(m.now)}`);
   r += 1;
@@ -1237,7 +1249,7 @@ export async function createWorkbook(res, opts = {}) {
       convenio: g.convenio, guia: (g.guias || []).join(', '), procedimentos: (g.procedimentos || []).join(', '), valor: r2(g.valor),
       lancadoPor: nomesLancadores(g.lancadoPor) || 'Sem registro no Caixa', tipo: tiposLancadores(g.lancadoPor),
     })), gne.itens?.length
-      ? `Atendimentos de convênio sem "Quem enviou" na Produção.${cz.dataReferencia ? ` Dias contados até ${cz.dataReferencia}.` : ''} Convênios faturados pelo próprio médico ficaram de fora (${count(gne.foraDoEnvio?.linhas)} linhas).`
+      ? `Atendimentos de convênio ainda não faturados (sem "Número lote" e sem "Quem enviou" na Produção).${cz.dataReferencia ? ` Dias contados até ${cz.dataReferencia}.` : ''} Convênios faturados pelo próprio médico ficaram de fora (${count(gne.foraDoEnvio?.linhas)} linhas).`
         + (gne.truncado > 0 ? ` ATENÇÃO: esta auditoria foi salva com a lista resumida; aqui estão ${count(gne.itens.length)} de ${count(gne.total.n)} atendimentos (total geral ${money(gne.total.valor)}).` : '')
       : 'Todas as guias de convênio do período foram enviadas ao faturamento.');
   }

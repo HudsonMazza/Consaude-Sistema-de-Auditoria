@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, validateCaixa,
-  convenioDoMedico, parseProcsCaixa, procBate, normProc, analiseEquipe,
+  convenioDoMedico, parseProcsCaixa, procBate, normProc, analiseEquipe, escopoNaoFaturado,
 } from "../src/lib/cruzamento.js";
 import { parseConvenios, normalizePreferences } from "../src/lib/preferences.js";
 import { resumoParaIA, sanitizeResumo, buildPrompt } from "../src/lib/aiPrompt.js";
@@ -137,7 +137,7 @@ test("sem o Caixa, as guias não enviadas saem do mesmo jeito, só sem quem lan�
   assert.deepEqual(cz.ranking, []);
 });
 
-test("guias não enviadas: faixas, convênios do médico de fora, PIX de fora e envio inválido ignorado no prazo", () => {
+test("guias não enviadas: faixas, convênios do médico de fora, PIX de fora, lote = faturado e envio inválido ignorado no prazo", () => {
   const prod = [
     // Histórico do AMIL: maior prazo válido = 8 dias (02/09 → 10/09). O envio anterior ao atendimento é ignorado.
     P({ "Código Atendimento": "10", "Data Atendimento": "02/09/2026", "Data envio": "10/09/2026" }),
@@ -153,11 +153,13 @@ test("guias não enviadas: faixas, convênios do médico de fora, PIX de fora e 
   const cz = analisarCruzamento({ prodTodas: prod, repTodas: [], divergencias: [], opcoes: { conveniosMedico: ["UNIMED DR"] } });
   const g = cz.guiasNaoEnviadas;
   assert.equal(cz.dataReferencia, "30/09/2026");
-  assert.deepEqual(g.itens.map((x) => [x.codigo, x.faixa]).sort(), [["20", "atrasada"], ["21", "no_prazo"], ["22", "em_lote"]]);
+  // O 22 tem "Número lote" sem "Quem enviou": já está faturado e fica fora do escopo.
+  assert.deepEqual(g.itens.map((x) => [x.codigo, x.faixa]).sort(), [["20", "atrasada"], ["21", "no_prazo"]]);
   assert.equal(g.itens.find((x) => x.codigo === "20").dias, 25);
   assert.equal(g.itens.find((x) => x.codigo === "20").limiteDias, 8);
   assert.equal(g.foraDoEnvio.linhas, 1);
-  assert.equal(g.total.n, 3);
+  assert.equal(g.total.n, 2);
+  assert.equal(g.faixas.em_lote.n, 0);
   assert.equal(g.faixas.atrasada.valor, 80);
 });
 
@@ -257,4 +259,62 @@ test("preferências: lista de convênios aceita texto livre, remove repetidos e 
   assert.deepEqual(parseConvenios("UNIMED DR., unimed dr.; CASSI DRA. NELMA\n "), ["UNIMED DR.", "CASSI DRA. NELMA"]);
   assert.deepEqual(normalizePreferences({ tolerancia: "0,01" }).conveniosMedico, ["UNIMED DR.", "UNIMED DRA."]);
   assert.deepEqual(normalizePreferences({ conveniosMedico: [] }).conveniosMedico, []);
+});
+
+test("escopo: só o não faturado (lote e Quem enviou vazios); o Repasse acompanha pelo código", () => {
+  const NAO = { "Quem enviou": "", "Data envio": "", "Número lote": "" };
+  const prod = [
+    P({ "Código Atendimento": "1" }),                                   // faturado (lote + envio)
+    P({ "Código Atendimento": "2", "Quem enviou": "", "Data envio": "" }), // só lote: faturado
+    P({ "Código Atendimento": "3", "Número lote": "" }),                 // só envio: faturado
+    P({ "Código Atendimento": "4", ...NAO }),                            // não faturado
+    P({ "Código Atendimento": "5", "Grupo de Convênio": "PARTICULAR", "Forma de Pagamento": "Dinheiro", "Número lote": " - ", ...NAO }), // particular: nunca faturado
+    P({ "Código Atendimento": "6" }), P({ "Código Atendimento": "6", Item: "ECG", ...NAO }), // atendimento com item ainda aberto: entra inteiro
+  ];
+  const rep = [R({ "Cód. atendimento": "1" }), R({ "Cód. atendimento": "2" }), R({ "Cód. atendimento": "4" }), R({ "Cód. atendimento": "6" }),
+    R({ "Cód. atendimento": "99" }), R({ "Cód. atendimento": "" })];
+  const e = escopoNaoFaturado(prod, rep);
+  assert.equal(e.aplicado, true);
+  assert.deepEqual(e.prod.map((r) => r["Código Atendimento"]), ["4", "5", "6", "6"]);
+  assert.deepEqual(e.foraProd.map((r) => r["Código Atendimento"]), ["1", "2", "3"]);
+  assert.equal(e.atendimentosFora, 3);
+  // Sai do Repasse só o atendimento todo faturado; sem código ou fora da Produção continua (é divergência a conferir).
+  assert.deepEqual(e.rep.map((r) => r["Cód. atendimento"]), ["4", "6", "99", ""]);
+  assert.deepEqual(e.foraRep.map((r) => r["Cód. atendimento"]), ["1", "2"]);
+});
+
+test("escopo: sem colunas de faturamento ou sem código, nada muda e o motivo é informado", () => {
+  const generica = [{ Médico: "X", Paciente: "A", Valor: 10 }];
+  const a = escopoNaoFaturado(generica, generica);
+  assert.equal(a.aplicado, false);
+  assert.equal(a.motivo, "sem_colunas");
+  assert.equal(a.prod, generica);
+  const prod = [P({}), P({ "Código Atendimento": "2", "Quem enviou": "", "Data envio": "", "Número lote": "" })];
+  const b = escopoNaoFaturado(prod, [{ Médico: "X", Paciente: "A", Valor: 10 }]);
+  assert.equal(b.aplicado, false);
+  assert.equal(b.motivo, "sem_codigo");
+  assert.equal(b.prod.length, 2);
+  // Tudo ainda aberto: escopo aplicado, nada sai.
+  const c = escopoNaoFaturado([prod[1]], [R({ "Cód. atendimento": "2" })]);
+  assert.equal(c.aplicado, true);
+  assert.equal(c.foraProd.length + c.foraRep.length, 0);
+});
+
+test("guias de vários dias e números repetidos: só guias com algum atendimento ainda não faturado", () => {
+  const prod = [
+    P({ "Código Atendimento": "1", "Número da guia": "500", "Data Atendimento": "01/09/2026" }),
+    P({ "Código Atendimento": "2", "Número da guia": "500", "Data Atendimento": "08/09/2026" }),
+    P({ "Código Atendimento": "3", "Número da guia": "12", Paciente: "BRUNO DIAS", "Data Atendimento": "01/09/2026" }),
+    P({ "Código Atendimento": "4", "Número da guia": "12", Paciente: "CLARA MELO", "Data Atendimento": "09/09/2026" }),
+  ];
+  const cz = analisarCruzamento({ prodTodas: prod, repTodas: [], divergencias: [] });
+  assert.equal(cz.guiasMultiDia.total, 0);
+  assert.equal(cz.guiasRepetidas.total, 0);
+  assert.equal(cz.guiasNaoEnviadas.total.n, 0);
+});
+
+test("IA: o prompt diz que o escopo é só o não faturado", () => {
+  const resumo = sanitizeResumo(JSON.parse(JSON.stringify(resumoParaIA({ escopo: { naoFaturado: true, foraProd: { linhas: 3 }, foraRep: { linhas: 2 } } }))));
+  assert.match(buildPrompt(resumo), /AINDA NAO FATURADOS.*5 linhas ja faturadas/);
+  assert.doesNotMatch(buildPrompt(sanitizeResumo(resumoParaIA({}))), /Escopo/);
 });
