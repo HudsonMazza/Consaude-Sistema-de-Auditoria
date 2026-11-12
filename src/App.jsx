@@ -21,7 +21,7 @@ import {
   sheetHeaders, mergeColumns, excluirPix,
 } from "./lib/engine.js";
 import {
-  prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, validateCaixa,
+  prepararAtendimentos, compararAtendimentos, analisarCruzamento, insightsCruzamento, detectCaixaColumns, validateCaixa, escopoNaoFaturado,
 } from "./lib/cruzamento.js";
 // Exportações e relatório IA carregam sob demanda (as funções já eram assíncronas).
 const exportExcel = (...a) => import("./lib/exporters.js").then((m) => m.exportExcel(...a));
@@ -295,18 +295,27 @@ export default function App() {
       ]);
       // Regra de negócio: registros pagos via PIX ficam fora de toda a análise (cruzamento, divergências, relatório).
       // Filtra antes de detectar colunas/validar; as linhas lidas (e o cache da leitura) continuam intactas.
-      const prodRows = excluirPix(prodTodas);
-      const repRows  = excluirPix(repTodas);
+      const prodSemPix = excluirPix(prodTodas);
+      const repSemPix  = excluirPix(repTodas);
 
       // Etapa 2: Identificação das colunas
       // Colunas detectadas, com as escolhidas em "Ajustar colunas" por cima
-      const pCols = mergeColumns(detectColumns(prodRows), colMap.prod);
-      const rCols = mergeColumns(detectColumns(repRows), colMap.rep);
+      const pCols = mergeColumns(detectColumns(prodSemPix), colMap.prod);
+      const rCols = mergeColumns(detectColumns(repSemPix), colMap.rep);
       const SO_PIX = "Todas as linhas desta planilha são pagas via PIX e ficam fora da análise. Envie um arquivo com outras formas de pagamento.";
-      const prodErrors = prodRows.length === 0 && prodTodas.length > 0 ? [SO_PIX] : validateFile(prodRows, pCols);
-      const repErrors  = repRows.length === 0 && repTodas.length > 0 ? [SO_PIX] : validateFile(repRows, rCols);
+      const prodErrors = prodSemPix.length === 0 && prodTodas.length > 0 ? [SO_PIX] : validateFile(prodSemPix, pCols);
+      const repErrors  = repSemPix.length === 0 && repTodas.length > 0 ? [SO_PIX] : validateFile(repSemPix, rCols);
       const caixaCols  = caixaRows ? detectCaixaColumns(caixaRows) : null;
       const caixaErrors = caixaRows ? validateCaixa(caixaRows, caixaCols) : [];
+
+      // Regra de negócio: a auditoria olha só o que ainda não foi faturado (Produção com "Número lote" e
+      // "Quem enviou" vazios). O Repasse acompanha pelo Código de atendimento.
+      const escopo = escopoNaoFaturado(prodSemPix, repSemPix);
+      const prodRows = escopo.prod;
+      const repRows  = escopo.rep;
+      if (!prodErrors.length && escopo.aplicado && prodRows.length === 0) {
+        prodErrors.push("Todas as linhas desta Produção já foram faturadas (têm “Número lote” ou “Quem enviou”). A auditoria considera só o que ainda não foi faturado.");
+      }
       step(1, 32);
 
       if (prodErrors.length || repErrors.length || caixaErrors.length) {
@@ -400,13 +409,19 @@ export default function App() {
         divergencias:           divs,
         insights,
         processadoEm: new Date().toLocaleString("pt-BR"),
-        referencia:   periodoAuditoria.trim() || extractReferencia(prodRows) || extractReferencia(repRows) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+        referencia:   periodoAuditoria.trim() || extractReferencia(prodSemPix) || extractReferencia(repSemPix) || new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
         file1Name:    file1.name,
         file2Name:    file2.name,
         ...(file3 ? { file3Name: file3.name } : {}),
         r2FileIds,
         tolerancia:   threshold,
         ...(semProd.linhas || semRep.linhas ? { linhasSemMedico: { prod: semProd, rep: semRep } } : {}),
+        // Escopo "só não faturado": o que ficou de fora por já ter sido faturado (naoFaturado false + motivo = regra não aplicada).
+        escopo: escopo.aplicado ? {
+          naoFaturado: true,
+          foraProd: { linhas: escopo.foraProd.length, valor: sumVals(escopo.foraProd, pCols.valorCol), atendimentos: escopo.atendimentosFora },
+          foraRep:  { linhas: escopo.foraRep.length,  valor: sumVals(escopo.foraRep,  rCols.valorCol) },
+        } : { naoFaturado: false, motivo: escopo.motivo || null },
         ...(cruzamento ? { cruzamento } : {}),
       };
       const entry = {

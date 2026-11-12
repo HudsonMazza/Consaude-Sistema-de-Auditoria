@@ -146,7 +146,7 @@ function usePaged(rows, deps) {
   return { pageRows: rows.slice((current - 1) * pageSize, current * pageSize), current, pageSize, setPage, setPageSize };
 }
 
-/** Guias de convênio sem "Quem enviou" na Produção: o dinheiro que ainda pode ser cobrado do convênio. */
+/** Guias de convênio ainda não faturadas (sem "Número lote" e sem "Quem enviou"): o dinheiro que ainda pode ser cobrado do convênio. */
 export function GuiasNaoEnviadasCard({ cruzamento }) {
   const { compact } = useViewport();
   const g = cruzamento?.guiasNaoEnviadas;
@@ -178,13 +178,14 @@ export function GuiasNaoEnviadasCard({ cruzamento }) {
 
   return (
     <Card flush title={<>Guias de convênio não enviadas <Count>{formatNumber(g.total.n)}</Count></>}
-      subtitle={`Atendimentos de convênio sem “Quem enviou” na Produção: a guia não chegou ao faturamento.${cruzamento.dataReferencia ? ` Dias contados até ${cruzamento.dataReferencia}, o envio mais recente do arquivo.` : ''}`}>
+      subtitle={`Atendimentos de convênio ainda não faturados (sem “Número lote” e sem “Quem enviou” na Produção): a guia não chegou ao faturamento.${cruzamento.dataReferencia ? ` Dias contados até ${cruzamento.dataReferencia}, o envio mais recente do arquivo.` : ''}`}>
       <div className="cs-card-toolbar">
         <StatStrip compact={compact} items={[
           // Contagem no rótulo: a legenda do StatStrip fica na linha do valor e não cabe ao lado de valores em reais.
           { label: `Valor a faturar · ${formatNumber(g.total.n)}`, value: formatBRL(g.total.valor), icon: 'banknote' },
           { label: `Atrasadas · ${formatNumber(f.atrasada.n)}`, value: formatBRL(f.atrasada.valor), icon: 'triangle-alert', tone: 'danger' },
-          { label: `Em lote · ${formatNumber(f.em_lote.n)}`, value: formatBRL(f.em_lote.valor), icon: 'clock' },
+          // "Em lote" só existe em auditorias antigas: hoje linha com lote já conta como faturada.
+          ...(f.em_lote?.n ? [{ label: `Em lote · ${formatNumber(f.em_lote.n)}`, value: formatBRL(f.em_lote.valor), icon: 'clock' }] : []),
           { label: `No prazo · ${formatNumber(f.no_prazo.n)}`, value: formatBRL(f.no_prazo.valor), icon: 'calendar' },
         ]} />
         {!cruzamento.comCaixa && g.total.n > 0 && (
@@ -204,7 +205,7 @@ export function GuiasNaoEnviadasCard({ cruzamento }) {
               <FilterChips label="Situação da guia" value={faixa} onChange={setFaixa} options={[
                 { id: 'all', label: 'Todas', count: itens.length },
                 { id: 'atrasada', label: 'Atrasadas', count: f.atrasada.n, icon: 'triangle-alert' },
-                { id: 'em_lote', label: 'Em lote', count: f.em_lote.n, icon: 'clock' },
+                ...(f.em_lote?.n ? [{ id: 'em_lote', label: 'Em lote', count: f.em_lote.n, icon: 'clock' }] : []),
                 { id: 'no_prazo', label: 'Dentro do prazo', count: f.no_prazo.n, icon: 'calendar' },
               ]} />
             </div>

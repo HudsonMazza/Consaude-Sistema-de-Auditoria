@@ -117,6 +117,18 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
   const semMedico = semMedicoPartes.length
     ? `${semMedicoPartes.join(' e ')} não têm nome de médico e não entraram no cruzamento. Confira se a planilha tem células mescladas ou linhas de subtotal.`
     : null;
+  // Escopo "só não faturado" (auditorias antigas não têm o campo e não mostram aviso).
+  const esc = resultados.escopo;
+  const linhasTxt = (n) => `${formatNumber(n)} ${n === 1 ? 'linha' : 'linhas'}`;
+  const escopoFora = esc?.naoFaturado && (esc.foraProd?.linhas || esc.foraRep?.linhas)
+    ? [esc.foraProd?.linhas ? `${linhasTxt(esc.foraProd.linhas)} da Produção (${formatBRL(esc.foraProd.valor)})` : null,
+       esc.foraRep?.linhas ? `${linhasTxt(esc.foraRep.linhas)} do Repasse (${formatBRL(esc.foraRep.valor)})` : null].filter(Boolean).join(' e ')
+    : null;
+  const escopoAviso = esc && !esc.naoFaturado && esc.motivo
+    ? (esc.motivo === 'sem_codigo'
+      ? 'Não foi possível limitar a auditoria ao que ainda não foi faturado: falta a coluna “Código Atendimento” na Produção ou no Repasse. Todas as linhas foram analisadas.'
+      : 'A Produção não tem as colunas “Número lote” e “Quem enviou”: não dá para saber o que já foi faturado, então todas as linhas foram analisadas.')
+    : null;
   const pctMedicos = resultados.totalMedicos ? (resultados.medicosComDivergencia / resultados.totalMedicos) * 100 : 0;
 
   // Exportações são assíncronas (bibliotecas carregadas sob demanda): avisa se falharem.
@@ -238,6 +250,19 @@ export default function ReportPage({ selectedMedico, setSelectedMedico, resultad
           action={<Button variant="primary" icon="download" onClick={onExportDefault}>{exportDefaultLabel}</Button>}>
           {divs.length === 1 ? 'O médico com divergência está revisado ou corrigido.' : `Os ${formatNumber(divs.length)} médicos com divergência estão revisados ou corrigidos.`}
           {changed ? ` Último status em ${ddmmyyyy(changed)} às ${hhmm(changed)}.` : ''}
+        </Callout>
+      )}
+
+      {escopoFora && (
+        <Callout tone="info" title="Só o que ainda não foi faturado">
+          {escopoFora} já {(esc.foraProd?.linhas || 0) + (esc.foraRep?.linhas || 0) === 1 ? 'foi faturada e ficou' : 'foram faturadas e ficaram'} fora da auditoria.
+          Faturado = Produção com “Número lote” ou “Quem enviou” preenchido.
+        </Callout>
+      )}
+
+      {escopoAviso && (
+        <Callout tone="warning" title="Escopo do não faturado não aplicado">
+          {escopoAviso}
         </Callout>
       )}
 

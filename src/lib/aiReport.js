@@ -439,12 +439,12 @@ ${det.length ? `<table class="tbl"><thead><tr><th>Paciente</th><th class="r">Pro
 <td class="r num" data-l="Valor">${esc(money(g.valor))}</td>
 <td data-l="Situação">${badge(g.faixa === "atrasada" ? "danger" : g.faixa === "em_lote" ? "warning" : "neutral", FAIXAS_GUIA[g.faixa] || "—")}</td>
 ${cz.comCaixa ? `<td class="muted" data-l="Lançado por">${esc(nomes(g.lancadoPor) || "Sem registro no Caixa")}</td>` : ""}</tr>`).join("");
-    caixaHTML += `<div class="grid">${card("s12", "Guias de convênio não enviadas", `Atendimentos de convênio sem “Quem enviou” na Produção: receita que ainda pode ser cobrada do convênio. Não aparece como divergência Produção × Repasse.${cz.dataReferencia ? ` Dias contados até ${esc(cz.dataReferencia)}.` : ""}`, `
+    caixaHTML += `<div class="grid">${card("s12", "Guias de convênio não enviadas", `Atendimentos de convênio ainda não faturados (sem “Número lote” e sem “Quem enviou” na Produção): receita que ainda pode ser cobrada do convênio. Não aparece como divergência Produção × Repasse.${cz.dataReferencia ? ` Dias contados até ${esc(cz.dataReferencia)}.` : ""}`, `
 <div class="kpis" style="margin-bottom:16px">
 <div class="kpi"><div class="k">A faturar</div><div class="v num">${esc(money(gne.total.valor))}</div><div class="s">${esc(plural(gne.total.n, "atendimento", "atendimentos"))}</div></div>
 <div class="kpi"><div class="k">Atrasadas</div><div class="v num">${esc(money(fx.atrasada?.valor))}</div><div class="s">${esc(plural(fx.atrasada?.n || 0, "atendimento", "atendimentos"))} além do prazo do convênio</div></div>
-<div class="kpi"><div class="k">Em lote, sem envio</div><div class="v num">${esc(money(fx.em_lote?.valor))}</div><div class="s">${esc(plural(fx.em_lote?.n || 0, "atendimento", "atendimentos"))}</div></div>
-<div class="kpi"><div class="k">Dentro do prazo</div><div class="v num">${esc(money(fx.no_prazo?.valor))}</div><div class="s">${esc(plural(fx.no_prazo?.n || 0, "atendimento", "atendimentos"))}</div></div>
+${fx.em_lote?.n ? `<div class="kpi"><div class="k">Em lote, sem envio</div><div class="v num">${esc(money(fx.em_lote?.valor))}</div><div class="s">${esc(plural(fx.em_lote?.n || 0, "atendimento", "atendimentos"))}</div></div>
+` : ""}<div class="kpi"><div class="k">Dentro do prazo</div><div class="v num">${esc(money(fx.no_prazo?.valor))}</div><div class="s">${esc(plural(fx.no_prazo?.n || 0, "atendimento", "atendimentos"))}</div></div>
 </div>
 ${prioridadeGuias.length ? `<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Atendimento</th><th>Paciente</th><th>Convênio · guia</th><th class="r">Valor</th><th>Situação</th>${cz.comCaixa ? "<th>Lançado por</th>" : ""}</tr></thead><tbody>${linhasGuias}</tbody></table></div>
 ${gne.total.n > prioridadeGuias.length ? `<p class="card__d" style="margin-top:10px">As ${count(prioridadeGuias.length)} primeiras por prioridade (atraso e valor). A lista completa está na exportação em Excel.</p>` : ""}` : '<div class="empty">Todas as guias de convênio do período foram enviadas.</div>'}`)}</div>`;

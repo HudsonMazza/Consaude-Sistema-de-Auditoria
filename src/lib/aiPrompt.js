@@ -28,6 +28,7 @@ export function resumoParaIA(res, equipe = null) {
     tipos,
     guias: resumoGuias(res?.cruzamento),
     equipe: resumoEquipe(equipe),
+    escopo: res?.escopo ? { naoFaturado: Boolean(res.escopo.naoFaturado), foraLinhas: num(res.escopo.foraProd?.linhas) + num(res.escopo.foraRep?.linhas) } : null,
   };
 }
 
@@ -133,16 +134,26 @@ export function sanitizeResumo(r) {
       faltasTaxa: num(r.equipe.faltasTaxa),
       faltasTop3Medicos: r.equipe.faltasTop3Medicos == null ? null : num(r.equipe.faltasTop3Medicos),
     } : null,
+    escopo: r.escopo && typeof r.escopo === "object" ? { naoFaturado: Boolean(r.escopo.naoFaturado), foraLinhas: num(r.escopo.foraLinhas) } : null,
   };
+}
+
+/** Linha do prompt sobre o escopo (vazia em auditorias antigas, sem o campo). */
+function linhaEscopo(e) {
+  if (!e) return "";
+  return e.naoFaturado
+    ? "- Escopo: apenas atendimentos AINDA NAO FATURADOS (Producao sem numero de lote e sem quem enviou)"
+      + (e.foraLinhas ? "; " + e.foraLinhas + " linhas ja faturadas ficaram de fora" : "") + ". As acoes devem corrigir antes do faturamento.\n"
+    : "- Escopo: todas as linhas (nao foi possivel separar o que ja foi faturado)\n";
 }
 
 /** Linha do prompt sobre as guias não enviadas (vazia em auditorias sem o cruzamento). */
 function linhaGuias(g) {
   if (!g) return "";
   if (!g.n) return "- Guias de convenio: todas enviadas ao faturamento\n";
-  return "- Guias de convenio NAO enviadas ao faturamento: " + g.n + " atendimentos, " + brl(g.v)
+  return "- Guias de convenio NAO faturadas (sem lote e sem envio): " + g.n + " atendimentos, " + brl(g.v)
     + " (atrasadas alem do prazo do convenio: " + g.atrasadas.n + ", " + brl(g.atrasadas.v)
-    + "; em lote sem envio: " + g.emLote.n + ")"
+    + (g.emLote.n ? "; em lote sem envio: " + g.emLote.n : "") + ")"
     + (g.comCaixa ? "; lancadas por " + g.pessoas + " pessoas, as 3 maiores concentram " + g.concentracaoTop3 + "%"
       + (g.porProfissional ? "; " + Math.round(g.porProfissional) + " lancadas pelo proprio profissional" : "") : "")
     + (g.multiDiaIncompletas ? "; " + g.multiDiaIncompletas + " guias usadas em mais de um dia com envio incompleto" : "")
@@ -173,6 +184,7 @@ export function buildPrompt(r) {
     + "Analise os dados de auditoria abaixo e responda APENAS com JSON valido (sem markdown).\n\n"
     + "DADOS:\n"
     + "- Referencia: " + r.referencia + "\n"
+    + linhaEscopo(r.escopo)
     + "- " + r.totalMedicos + " medicos, " + r.medicosComDivergencia + " com divergencia (" + pct + "%)\n"
     + "- Valor divergente: " + r.valorTotal + "\n"
     + "- Repasse>Producao (sobrepagamento): " + r.sobre.n + " medicos, " + brl(r.sobre.v) + "\n"

@@ -1,5 +1,18 @@
 # Consa-de-Sistema-de-Auditoria
 
+## Regras de escopo da auditoria
+
+- **PIX fica de fora:** linhas com "Forma de Pagamento" = PIX não entram na análise.
+- **Só o que ainda não foi faturado:** uma linha da Produção é *não faturada* quando as colunas
+  "Número lote" e "Quem enviou" estão vazias. Linhas com qualquer uma delas preenchida já foram
+  faturadas e ficam fora de Produção × Repasse e das listas de guias. O Repasse acompanha pelo
+  "Código Atendimento": sai a linha cujo atendimento está todo faturado na Produção. Se um
+  atendimento ainda tem algum item não faturado, ele entra inteiro (o Repasse não tem lote nem
+  envio para separar item a item). O já faturado continua servindo de referência para o prazo de
+  envio de cada convênio e para a taxa de guias sem envio da equipe. Sem essas colunas, ou sem o
+  código nas duas planilhas, todas as linhas são analisadas e o relatório avisa.
+  Regra em `src/lib/cruzamento.js` (`linhaNaoFaturada` / `escopoNaoFaturado`).
+
 ## Arquivos de auditoria no Cloudflare R2
 
 As planilhas são enviadas pelo navegador diretamente para o bucket privado usando
